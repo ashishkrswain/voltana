@@ -23,6 +23,7 @@ services:
       dockerfile: Dockerfile
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/voltana
+      ORS_API_KEY: ${ORS_API_KEY}
       GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY}
       APP_ENV: development
       DEBUG: "true"
@@ -30,6 +31,7 @@ services:
       - "8000:8000"
     volumes:
       - ./backend:/app
+      - ./backend/.env:/app/.env:ro
     depends_on:
       postgres:
         condition: service_healthy

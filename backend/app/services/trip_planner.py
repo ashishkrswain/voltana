@@ -4,7 +4,7 @@ from uuid import UUID
 import math
 
 from app.models import Vehicle, Charger, ConnectorType
-from app.services.routing import GoogleMapsRouter, RouteResult as RouterRouteResult, get_router
+from app.services.ors_routing import ORSRouter, RouteResult as RouterRouteResult, get_ors_router
 
 
 @dataclass
@@ -364,12 +364,12 @@ class TripPlanner:
 
         return hours * 60
 
-    def plan_trip(self, trip_input: TripInput) -> TripItinerary:
+    async def plan_trip(self, trip_input: TripInput) -> TripItinerary:
         """Main trip planning entry point."""
-        # Step 1: Get route from Google Maps
+        # Step 1: Get route from OpenRouteService
         try:
-            router = get_router()
-            route_data = router.get_route_from_coords(
+            router = get_ors_router()
+            route_data = await router.get_route(
                 trip_input.origin_lat,
                 trip_input.origin_lng,
                 trip_input.dest_lat,

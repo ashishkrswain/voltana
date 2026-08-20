@@ -49,7 +49,7 @@ class TripPlanResponse(BaseModel):
 
 
 @router.post("/plan", response_model=TripPlanResponse)
-def plan_trip(request: TripPlanRequest, db: Session = Depends(get_db)):
+async def plan_trip(request: TripPlanRequest, db: Session = Depends(get_db)):
     """Plan an EV trip with charging stops."""
     vehicle = db.get(Vehicle, request.vehicle_id)
     if not vehicle:
@@ -69,7 +69,7 @@ def plan_trip(request: TripPlanRequest, db: Session = Depends(get_db)):
     )
 
     try:
-        itinerary = planner.plan_trip(trip_input)
+        itinerary = await planner.plan_trip(trip_input)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

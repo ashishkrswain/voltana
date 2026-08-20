@@ -14,7 +14,7 @@ pip install -r requirements.txt
 
 # Copy environment file
 cp .env.example .env
-# Edit .env with your database URL and Google Maps API key
+# Edit .env with your database URL and OpenRouteService API key
 
 # Run migrations
 alembic upgrade head
