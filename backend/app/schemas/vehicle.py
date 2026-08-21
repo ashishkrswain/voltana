@@ -1,5 +1,6 @@
 from datetime import date
-from typing import Optional, List
+from typing import Optional, List, Union
+from uuid import UUID
 from pydantic import BaseModel, Field
 from enum import Enum
 
@@ -38,8 +39,8 @@ class EfficiencyCurveCreate(EfficiencyCurveBase):
 
 
 class EfficiencyCurveResponse(EfficiencyCurveBase):
-    id: str
-    vehicle_id: str
+    id: UUID
+    vehicle_id: UUID
 
     class Config:
         from_attributes = True
@@ -50,7 +51,7 @@ class RangeConfidenceBase(BaseModel):
 
 
 class RangeConfidenceResponse(RangeConfidenceBase):
-    vehicle_id: str
+    vehicle_id: UUID
 
     class Config:
         from_attributes = True
@@ -105,7 +106,7 @@ class VehicleUpdate(BaseModel):
 
 
 class VehicleResponse(VehicleBase):
-    id: str
+    id: UUID
     efficiency_curve: List[EfficiencyCurveResponse] = []
     range_confidence: Optional[RangeConfidenceResponse] = None
 

@@ -37,7 +37,7 @@ class Vehicle(Base):
     __tablename__ = "vehicles"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    category = Column(Enum(VehicleCategory), nullable=False, index=True)
+    category = Column(Enum(VehicleCategory, values_callable=lambda x: [e.value for e in x]), nullable=False, index=True)
     make = Column(String(100), nullable=False, index=True)
     model = Column(String(100), nullable=False, index=True)
     variant = Column(String(100), nullable=False)
@@ -54,7 +54,7 @@ class Vehicle(Base):
     max_dc_charge_kw = Column(Float, nullable=True)
     dc_10_80_time_minutes = Column(Integer, nullable=True)
     price_ex_showroom_inr = Column(Integer, nullable=True)
-    status = Column(Enum(VehicleStatus), default=VehicleStatus.ACTIVE, nullable=False)
+    status = Column(Enum(VehicleStatus, values_callable=lambda x: [e.value for e in x]), default=VehicleStatus.ACTIVE, nullable=False)
     source_last_verified = Column(Date)
 
     efficiency_curve = relationship("EfficiencyCurve", back_populates="vehicle", cascade="all, delete-orphan")
@@ -71,7 +71,7 @@ class EfficiencyCurve(Base):
     vehicle_id = Column(UUID(as_uuid=True), ForeignKey("vehicles.id", ondelete="CASCADE"), nullable=False, index=True)
     speed_band_kmph = Column(Integer, nullable=False)
     wh_per_km = Column(Float, nullable=False)
-    source = Column(Enum(EfficiencySource), default=EfficiencySource.ESTIMATED, nullable=False)
+    source = Column(Enum(EfficiencySource, values_callable=lambda x: [e.value for e in x]), default=EfficiencySource.ESTIMATED, nullable=False)
 
     vehicle = relationship("Vehicle", back_populates="efficiency_curve")
 
@@ -83,7 +83,7 @@ class RangeConfidence(Base):
     __tablename__ = "range_confidence"
 
     vehicle_id = Column(UUID(as_uuid=True), ForeignKey("vehicles.id", ondelete="CASCADE"), primary_key=True)
-    confidence = Column(Enum(RangeConfidenceLevel), nullable=False)
+    confidence = Column(Enum(RangeConfidenceLevel, values_callable=lambda x: [e.value for e in x]), nullable=False)
 
     vehicle = relationship("Vehicle", back_populates="range_confidence")
 

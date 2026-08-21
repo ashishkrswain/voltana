@@ -22,40 +22,40 @@ def upgrade() -> None:
     # Create enums
     vehicle_category = postgresql.ENUM(
         'two_wheeler', 'three_wheeler', 'four_wheeler',
-        name='vehiclecategory', create_type=True
+        name='vehiclecategory', create_type=False
     )
-    vehicle_category.create(op.get_bind())
+    vehicle_category.create(op.get_bind(), checkfirst=True)
 
     vehicle_status = postgresql.ENUM(
         'active', 'discontinued',
-        name='vehiclestatus', create_type=True
+        name='vehiclestatus', create_type=False
     )
-    vehicle_status.create(op.get_bind())
+    vehicle_status.create(op.get_bind(), checkfirst=True)
 
     range_confidence_level = postgresql.ENUM(
         'high', 'medium', 'low',
-        name='rangeconfidencelevel', create_type=True
+        name='rangeconfidencelevel', create_type=False
     )
-    range_confidence_level.create(op.get_bind())
+    range_confidence_level.create(op.get_bind(), checkfirst=True)
 
     efficiency_source = postgresql.ENUM(
         'manufacturer', 'community', 'estimated',
-        name='efficiencysource', create_type=True
+        name='efficiencysource', create_type=False
     )
-    efficiency_source.create(op.get_bind())
+    efficiency_source.create(op.get_bind(), checkfirst=True)
 
     connector_type = postgresql.ENUM(
         'Type 2', 'Bharat AC-001', 'CCS2', 'GB/T',
         'Bharat DC-001', 'CHAdeMO', 'Tesla NACS',
-        name='connectortype', create_type=True
+        name='connectortype', create_type=False
     )
-    connector_type.create(op.get_bind())
+    connector_type.create(op.get_bind(), checkfirst=True)
 
     charger_status = postgresql.ENUM(
         'unknown', 'operational', 'out_of_order', 'maintenance',
-        name='chargerstatus', create_type=True
+        name='chargerstatus', create_type=False
     )
-    charger_status.create(op.get_bind())
+    charger_status.create(op.get_bind(), checkfirst=True)
 
     # Create tables
     op.create_table(

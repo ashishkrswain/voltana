@@ -100,6 +100,13 @@ export interface TripStop {
   charge_to_pct: number;
   estimated_charge_time_min: number;
   charger_id: string;
+  charger_address?: string | null;
+  network_name?: string | null;
+  network_slug?: string | null;
+  power_kw?: number;
+  latitude?: number;
+  longitude?: number;
+  connector_types?: string;
 }
 
 export interface TripLeg {
@@ -116,6 +123,7 @@ export interface TripPlanResponse {
   assumed_avg_speed_kmph: number;
   total_estimated_duration_min: number;
   legs: TripLeg[];
+  polyline_coords?: [number, number][];
 }
 
 export async function listVehicles(params?: {

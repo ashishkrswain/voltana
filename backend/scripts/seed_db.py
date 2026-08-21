@@ -5,8 +5,13 @@ Run with: python scripts/seed_db.py
 """
 
 import uuid
+import os
+import sys
 from datetime import date
 from sqlalchemy.orm import Session
+
+# Add backend directory to sys.path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from app.core.database import SessionLocal, engine, Base
 from app.models import (
@@ -520,6 +525,11 @@ def seed_chargers(db: Session):
 
     networks_data = [
         {
+            "name": "Bolt.Earth",
+            "slug": "bolt-earth",
+            "website": "https://bolt.earth",
+        },
+        {
             "name": "Statiq",
             "slug": "statiq",
             "website": "https://statiq.in",
@@ -559,9 +569,27 @@ def seed_chargers(db: Session):
 
     db.commit()
 
-    # Bangalore-Goa corridor (NH48) - key charging locations
+    # Bangalore-Goa corridor (NH48 / NH66) - key charging locations
     chargers_data = [
         # Bangalore area
+        {
+            "network_slug": "bolt-earth",
+            "name": "Bolt.Earth - Indiranagar Hub",
+            "address": "100 Feet Rd, Indiranagar, Bangalore",
+            "latitude": 12.9784,
+            "longitude": 77.6408,
+            "connector_types": [ConnectorType.CCS2, ConnectorType.TYPE2, ConnectorType.BHARAT_AC_001],
+            "power_kw": 60.0,
+        },
+        {
+            "network_slug": "bolt-earth",
+            "name": "Bolt.Earth - Yeshwanthpur NH48 Exit",
+            "address": "Tumkur Main Rd, Yeshwanthpur, Bangalore",
+            "latitude": 13.0238,
+            "longitude": 77.5503,
+            "connector_types": [ConnectorType.CCS2, ConnectorType.TYPE2],
+            "power_kw": 60.0,
+        },
         {
             "network_slug": "statiq",
             "name": "Statiq - Bangalore Electronic City",
@@ -589,7 +617,25 @@ def seed_chargers(db: Session):
             "connector_types": [ConnectorType.CCS2, ConnectorType.TYPE2],
             "power_kw": 50.0,
         },
-        # Tumakuru
+        # Tumakuru / Sira
+        {
+            "network_slug": "bolt-earth",
+            "name": "Bolt.Earth - NH48 Highway Hub Nelamangala",
+            "address": "NH48 Toll Plaza, Nelamangala",
+            "latitude": 13.0968,
+            "longitude": 77.3910,
+            "connector_types": [ConnectorType.CCS2, ConnectorType.TYPE2],
+            "power_kw": 60.0,
+        },
+        {
+            "network_slug": "bolt-earth",
+            "name": "Bolt.Earth - Kunigal Highway Plaza",
+            "address": "NH75 / Kunigal Bypass",
+            "latitude": 13.0230,
+            "longitude": 77.0340,
+            "connector_types": [ConnectorType.CCS2, ConnectorType.TYPE2],
+            "power_kw": 50.0,
+        },
         {
             "network_slug": "statiq",
             "name": "Statiq - NH48 Tumakuru",
@@ -599,7 +645,128 @@ def seed_chargers(db: Session):
             "connector_types": [ConnectorType.CCS2, ConnectorType.TYPE2],
             "power_kw": 60.0,
         },
-        # Hassan
+        {
+            "network_slug": "bolt-earth",
+            "name": "Bolt.Earth - Sira Highway Stop",
+            "address": "NH48, Near Sira Toll Gate",
+            "latitude": 13.7435,
+            "longitude": 76.9084,
+            "connector_types": [ConnectorType.CCS2, ConnectorType.TYPE2],
+            "power_kw": 60.0,
+        },
+        # Hiriyur & Chitradurga Hub
+        {
+            "network_slug": "bolt-earth",
+            "name": "Bolt.Earth - Hiriyur Highway Point",
+            "address": "NH48 / NH150A Junction, Hiriyur",
+            "latitude": 13.9456,
+            "longitude": 76.6190,
+            "connector_types": [ConnectorType.CCS2, ConnectorType.TYPE2],
+            "power_kw": 60.0,
+        },
+        {
+            "network_slug": "tata-power-ez",
+            "name": "Tata Power EZ - Chitradurga Bypass",
+            "address": "NH48, Chitradurga",
+            "latitude": 14.2251,
+            "longitude": 76.3980,
+            "connector_types": [ConnectorType.CCS2, ConnectorType.TYPE2],
+            "power_kw": 50.0,
+        },
+        {
+            "network_slug": "bolt-earth",
+            "name": "Bolt.Earth - Chitradurga Fort View Station",
+            "address": "NH48, Near Chitradurga Town Exit",
+            "latitude": 14.2380,
+            "longitude": 76.4050,
+            "connector_types": [ConnectorType.CCS2, ConnectorType.TYPE2],
+            "power_kw": 60.0,
+        },
+        # Davanagere & Ranebennur
+        {
+            "network_slug": "bolt-earth",
+            "name": "Bolt.Earth - Davanagere Expressway Hub",
+            "address": "NH48 Bypass, Davanagere",
+            "latitude": 14.4644,
+            "longitude": 75.9218,
+            "connector_types": [ConnectorType.CCS2, ConnectorType.TYPE2],
+            "power_kw": 60.0,
+        },
+        {
+            "network_slug": "chargezone",
+            "name": "ChargeZone - Davanagere",
+            "address": "NH48 Toll Area, Davanagere",
+            "latitude": 14.4710,
+            "longitude": 75.9300,
+            "connector_types": [ConnectorType.CCS2, ConnectorType.TYPE2],
+            "power_kw": 50.0,
+        },
+        {
+            "network_slug": "bolt-earth",
+            "name": "Bolt.Earth - Ranebennur Highway Stop",
+            "address": "NH48, Ranebennur",
+            "latitude": 14.6238,
+            "longitude": 75.6218,
+            "connector_types": [ConnectorType.CCS2, ConnectorType.TYPE2],
+            "power_kw": 60.0,
+        },
+        # Haveri & Hubli-Dharwad Twin City Hub
+        {
+            "network_slug": "bolt-earth",
+            "name": "Bolt.Earth - Haveri Express Point",
+            "address": "NH48, Haveri Bypass",
+            "latitude": 14.7954,
+            "longitude": 75.4018,
+            "connector_types": [ConnectorType.CCS2, ConnectorType.TYPE2],
+            "power_kw": 60.0,
+        },
+        {
+            "network_slug": "bolt-earth",
+            "name": "Bolt.Earth - Hubli Central Supercharger",
+            "address": "Gokul Road, Hubli",
+            "latitude": 15.3647,
+            "longitude": 75.1240,
+            "connector_types": [ConnectorType.CCS2, ConnectorType.TYPE2],
+            "power_kw": 60.0,
+        },
+        {
+            "network_slug": "statiq",
+            "name": "Statiq - Hubli Bypass NH48",
+            "address": "NH48 Gabbur Cross, Hubli",
+            "latitude": 15.3210,
+            "longitude": 75.1580,
+            "connector_types": [ConnectorType.CCS2, ConnectorType.TYPE2],
+            "power_kw": 60.0,
+        },
+        {
+            "network_slug": "tata-power-ez",
+            "name": "Tata Power EZ - Dharwad Highway",
+            "address": "NH48 PB Road, Dharwad",
+            "latitude": 15.4589,
+            "longitude": 75.0078,
+            "connector_types": [ConnectorType.CCS2, ConnectorType.TYPE2],
+            "power_kw": 50.0,
+        },
+        # Alnavar / Mollem / Goa Ghat entry
+        {
+            "network_slug": "bolt-earth",
+            "name": "Bolt.Earth - Mollem Ghats Entry Hub",
+            "address": "NH748, Mollem Checkpost, Goa Border",
+            "latitude": 15.3814,
+            "longitude": 74.2045,
+            "connector_types": [ConnectorType.CCS2, ConnectorType.TYPE2],
+            "power_kw": 60.0,
+        },
+        # Channarayapatna / Hassan
+        {
+            "network_slug": "bolt-earth",
+            "name": "Bolt.Earth - Hassan Highway Stop",
+            "address": "BM Road, Near Hassan Junction",
+            "latitude": 13.0080,
+            "longitude": 76.1050,
+            "connector_types": [ConnectorType.CCS2, ConnectorType.TYPE2],
+            "power_kw": 60.0,
+        },
         {
             "network_slug": "statiq",
             "name": "Statiq - NH48 Hassan",
@@ -618,7 +785,16 @@ def seed_chargers(db: Session):
             "connector_types": [ConnectorType.CCS2, ConnectorType.TYPE2],
             "power_kw": 50.0,
         },
-        # Charmadi Ghat area
+        # Sakleshpur & Ghat Corridor
+        {
+            "network_slug": "bolt-earth",
+            "name": "Bolt.Earth - Sakleshpur Gateway",
+            "address": "Shiradi Ghat Entry, Sakleshpur",
+            "latitude": 12.9430,
+            "longitude": 75.7860,
+            "connector_types": [ConnectorType.CCS2, ConnectorType.TYPE2],
+            "power_kw": 50.0,
+        },
         {
             "network_slug": "chargezone",
             "name": "ChargeZone - Charmadi Ghat",
@@ -628,7 +804,16 @@ def seed_chargers(db: Session):
             "connector_types": [ConnectorType.CCS2, ConnectorType.TYPE2],
             "power_kw": 30.0,
         },
-        # Mangalore
+        # Mangalore & Coastal NH66
+        {
+            "network_slug": "bolt-earth",
+            "name": "Bolt.Earth - Mangalore Port City Hub",
+            "address": "Kavoor, Mangalore",
+            "latitude": 12.9230,
+            "longitude": 74.8620,
+            "connector_types": [ConnectorType.CCS2, ConnectorType.TYPE2],
+            "power_kw": 60.0,
+        },
         {
             "network_slug": "statiq",
             "name": "Statiq - Mangalore NH66",
@@ -647,7 +832,16 @@ def seed_chargers(db: Session):
             "connector_types": [ConnectorType.TYPE2],
             "power_kw": 7.2,
         },
-        # Udupi
+        # Udupi / Kundapura / Bhatkal
+        {
+            "network_slug": "bolt-earth",
+            "name": "Bolt.Earth - Udupi NH66 Charging Station",
+            "address": "NH66 Santhekatte, Udupi",
+            "latitude": 13.3750,
+            "longitude": 74.7380,
+            "connector_types": [ConnectorType.CCS2, ConnectorType.TYPE2],
+            "power_kw": 60.0,
+        },
         {
             "network_slug": "tata-power-ez",
             "name": "Tata Power EZ - Udupi",
@@ -657,7 +851,25 @@ def seed_chargers(db: Session):
             "connector_types": [ConnectorType.CCS2, ConnectorType.TYPE2],
             "power_kw": 50.0,
         },
+        {
+            "network_slug": "bolt-earth",
+            "name": "Bolt.Earth - Bhatkal NH66 Express",
+            "address": "NH66, Bhatkal Bypass",
+            "latitude": 13.9820,
+            "longitude": 74.5510,
+            "connector_types": [ConnectorType.CCS2, ConnectorType.TYPE2],
+            "power_kw": 50.0,
+        },
         # Karwar
+        {
+            "network_slug": "bolt-earth",
+            "name": "Bolt.Earth - Karwar Coastal Hub",
+            "address": "NH66, Near Karwar Beach",
+            "latitude": 14.8210,
+            "longitude": 74.1310,
+            "connector_types": [ConnectorType.CCS2, ConnectorType.TYPE2],
+            "power_kw": 60.0,
+        },
         {
             "network_slug": "chargezone",
             "name": "ChargeZone - Karwar",
@@ -667,7 +879,25 @@ def seed_chargers(db: Session):
             "connector_types": [ConnectorType.CCS2, ConnectorType.TYPE2],
             "power_kw": 50.0,
         },
-        # Goa - Panjim
+        # Goa (Margao & Panjim)
+        {
+            "network_slug": "bolt-earth",
+            "name": "Bolt.Earth - South Goa Margao Hub",
+            "address": "NH66, Margao, Goa",
+            "latitude": 15.2832,
+            "longitude": 73.9681,
+            "connector_types": [ConnectorType.CCS2, ConnectorType.TYPE2, ConnectorType.BHARAT_AC_001],
+            "power_kw": 60.0,
+        },
+        {
+            "network_slug": "bolt-earth",
+            "name": "Bolt.Earth - Panjim City Hub",
+            "address": "Patto Plaza, Panjim, Goa",
+            "latitude": 15.4950,
+            "longitude": 73.8340,
+            "connector_types": [ConnectorType.CCS2, ConnectorType.TYPE2],
+            "power_kw": 60.0,
+        },
         {
             "network_slug": "statiq",
             "name": "Statiq - Panjim",

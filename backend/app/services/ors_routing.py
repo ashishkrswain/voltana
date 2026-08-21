@@ -13,14 +13,14 @@ class RouteResult:
     start_lng: float
     end_lat: float
     end_lng: float
+    polyline_coords: list[tuple[float, float]] = None
 
 
 class ORSRouter:
     def __init__(self, api_key: Optional[str] = None):
         self.api_key = api_key or os.getenv("ORS_API_KEY")
-        if not self.api_key:
-            raise ValueError("OpenRouteService API key not configured")
         self.base_url = "https://api.openrouteservice.org/v2"
+        self.osrm_url = "https://router.project-osrm.org/route/v1"
         self.client = httpx.AsyncClient(timeout=30.0)
 
     async def get_route(
@@ -31,46 +31,64 @@ class ORSRouter:
         dest_lng: float,
         profile: str = "driving-car"
     ) -> RouteResult:
-        """Get route from origin to destination using ORS."""
-        url = f"{self.base_url}/directions/{profile}/geojson"
-        headers = {
-            "Authorization": self.api_key,
-            "Content-Type": "application/json",
-        }
-        body = {
-            "coordinates": [[origin_lng, origin_lat], [dest_lng, dest_lat]],
-            "format": "geojson",
-        }
+        """Get route from origin to destination using ORS or public OSRM."""
+        if self.api_key:
+            try:
+                url = f"{self.base_url}/directions/{profile}/geojson"
+                headers = {
+                    "Authorization": self.api_key,
+                    "Content-Type": "application/json",
+                }
+                body = {
+                    "coordinates": [[origin_lng, origin_lat], [dest_lng, dest_lat]],
+                    "format": "geojson",
+                }
+                response = await self.client.post(url, json=body, headers=headers)
+                response.raise_for_status()
+                data = response.json()
 
-        response = await self.client.post(url, json=body, headers=headers)
+                feature = data["features"][0]
+                geometry = feature["geometry"]
+                summary = feature["properties"]["summary"]
+                coords = [(c[1], c[0]) for c in geometry["coordinates"]]
+                polyline = self._encode_polyline(coords)
+
+                return RouteResult(
+                    distance_km=summary["distance"] / 1000.0,
+                    duration_min=summary["duration"] / 60.0,
+                    polyline=polyline,
+                    start_lat=origin_lat,
+                    start_lng=origin_lng,
+                    end_lat=dest_lat,
+                    end_lng=dest_lng,
+                    polyline_coords=coords,
+                )
+            except Exception as e:
+                print(f"ORS routing failed, falling back to OSRM: {e}")
+
+        # OSRM Public Routing Fallback (Keyless, covers all Indian roads)
+        url = f"{self.osrm_url}/driving/{origin_lng},{origin_lat};{dest_lng},{dest_lat}?overview=full&geometries=geojson"
+        response = await self.client.get(url)
         response.raise_for_status()
         data = response.json()
 
-        feature = data["features"][0]
-        geometry = feature["geometry"]
-        props = feature["properties"]
-        summary = props["summary"]
+        if data.get("code") != "Ok" or not data.get("routes"):
+            raise ValueError("No route found by OSRM")
 
-        # ORS returns coordinates as [lng, lat] in GeoJSON
-        coords = geometry["coordinates"]
-        # Convert to encoded polyline (simplified - just return first coord pair for now)
-        # For proper polyline encoding, we'd use a library, but we can decode manually
-        polyline = self._encode_polyline([(c[1], c[0]) for c in coords])
-
-        distance_km = summary["distance"] / 1000.0
-        duration_min = summary["duration"] / 60.0
-
-        start_coord = coords[0]
-        end_coord = coords[-1]
+        route_data = data["routes"][0]
+        # OSRM returns coordinates as [lng, lat]
+        coords = [(c[1], c[0]) for c in route_data["geometry"]["coordinates"]]
+        polyline = self._encode_polyline(coords)
 
         return RouteResult(
-            distance_km=distance_km,
-            duration_min=duration_min,
+            distance_km=route_data["distance"] / 1000.0,
+            duration_min=route_data["duration"] / 60.0,
             polyline=polyline,
-            start_lat=start_coord[1],
-            start_lng=start_coord[0],
-            end_lat=end_coord[1],
-            end_lng=end_coord[0],
+            start_lat=origin_lat,
+            start_lng=origin_lng,
+            end_lat=dest_lat,
+            end_lng=dest_lng,
+            polyline_coords=coords,
         )
 
     def _encode_polyline(self, coords: list[tuple[float, float]]) -> str:

@@ -54,7 +54,7 @@ class Charger(Base):
     longitude = Column(Float, nullable=False, index=True)
     connector_types = Column(Text, nullable=False)  # JSON array of ConnectorType values
     power_kw = Column(Float, nullable=False)  # max power for this station
-    status = Column(Enum(ChargerStatus), default=ChargerStatus.UNKNOWN, nullable=False)
+    status = Column(Enum(ChargerStatus, values_callable=lambda x: [e.value for e in x]), default=ChargerStatus.UNKNOWN, nullable=False)
     notes = Column(Text, nullable=True)
 
     network = relationship("ChargerNetwork", back_populates="chargers")

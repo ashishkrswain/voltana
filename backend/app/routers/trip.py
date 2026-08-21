@@ -30,6 +30,13 @@ class TripStopResponse(BaseModel):
     charge_to_pct: float
     estimated_charge_time_min: float
     charger_id: str
+    charger_address: Optional[str] = None
+    network_name: Optional[str] = None
+    network_slug: Optional[str] = None
+    power_kw: float = 0.0
+    latitude: float = 0.0
+    longitude: float = 0.0
+    connector_types: str = ""
 
 
 class TripLegResponse(BaseModel):
@@ -46,6 +53,7 @@ class TripPlanResponse(BaseModel):
     assumed_avg_speed_kmph: float
     total_estimated_duration_min: float
     legs: list[TripLegResponse]
+    polyline_coords: list[list[float]] = Field(default_factory=list)
 
 
 @router.post("/plan", response_model=TripPlanResponse)
@@ -85,6 +93,13 @@ async def plan_trip(request: TripPlanRequest, db: Session = Depends(get_db)):
                 charge_to_pct=leg.stop.charge_to_pct,
                 estimated_charge_time_min=leg.stop.estimated_charge_time_min,
                 charger_id=str(leg.stop.charger_id),
+                charger_address=leg.stop.charger_address,
+                network_name=leg.stop.network_name,
+                network_slug=leg.stop.network_slug,
+                power_kw=leg.stop.power_kw,
+                latitude=leg.stop.latitude,
+                longitude=leg.stop.longitude,
+                connector_types=leg.stop.connector_types,
             )
         legs.append(TripLegResponse(
             from_km=leg.from_km,
@@ -95,9 +110,14 @@ async def plan_trip(request: TripPlanRequest, db: Session = Depends(get_db)):
             stop=stop_resp,
         ))
 
+    polyline_coords_list = [
+        [coord[0], coord[1]] for coord in (itinerary.polyline_coords or [])
+    ]
+
     return TripPlanResponse(
         total_distance_km=itinerary.total_distance_km,
         assumed_avg_speed_kmph=itinerary.assumed_avg_speed_kmph,
         total_estimated_duration_min=itinerary.total_estimated_duration_min,
         legs=legs,
+        polyline_coords=polyline_coords_list,
     )
