@@ -12,6 +12,7 @@ ENV/
 # Node & Next.js
 node_modules/
 .next/
+.turbo/
 out/
 build/
 dist/
