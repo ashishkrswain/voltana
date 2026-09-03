@@ -440,6 +440,7 @@ export default function Home() {
           onSelectCharger={(stop) => setSelectedCharger(stop)}
           onStartJourney={handleStartJourney}
           isPlanning={planning}
+          batteryKwh={selectedVehicle?.battery_capacity_kwh ?? 0}
         />
 
         {/* Charger Detail Sheet Modal */}

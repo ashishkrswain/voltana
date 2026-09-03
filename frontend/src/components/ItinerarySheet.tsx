@@ -13,6 +13,8 @@ interface ItinerarySheetProps {
   isPlanning?: boolean;
   /** Start expanded (showing full card) or collapsed (mini bar). Default: collapsed. */
   defaultExpanded?: boolean;
+  /** Vehicle battery capacity in kWh — used to estimate charging cost. */
+  batteryKwh?: number;
 }
 
 const COLLAPSED_HEIGHT = 100; // px — handle + summary bar
@@ -26,6 +28,33 @@ function formatDuration(minutes: number): string {
   return `${hours}h ${mins}m`;
 }
 
+// Rough per-kWh rates (₹) by network slug. Fallback is a mid DC-fast price.
+// DC fast is typically ₹18–24/kWh in India; AC is cheaper (~₹12–15).
+const RATE_BY_SLUG: Record<string, number> = {
+  'bolt-earth': 22,
+  'statiq': 22,
+  'tata-power-ez': 20,
+  'chargezone': 22,
+  'jio-bp-pulse': 21,
+  'ather-grid': 15,
+};
+
+function costForStop(batteryKwh: number, stop: TripStop): number {
+  const energyKwh =
+    batteryKwh * (Math.max(0, stop.charge_to_pct - stop.arrival_battery_pct)) / 100;
+  const slug = (stop.network_slug || '').toLowerCase();
+  const rate = RATE_BY_SLUG[slug] ?? 22;
+  return energyKwh * rate;
+}
+
+function estimateTripCost(batteryKwh: number, itinerary: TripPlanResponse | null): number {
+  if (!itinerary || batteryKwh <= 0) return 0;
+  return itinerary.legs.reduce(
+    (sum, leg) => (leg.stop ? sum + costForStop(batteryKwh, leg.stop) : sum),
+    0
+  );
+}
+
 export function ItinerarySheet({
   itinerary,
   vehicleName = 'Nexon EV Long Range',
@@ -35,6 +64,7 @@ export function ItinerarySheet({
   onStartJourney,
   isPlanning = false,
   defaultExpanded = false,
+  batteryKwh = 0,
 }: ItinerarySheetProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [dragging, setDragging] = useState(false);
@@ -68,6 +98,8 @@ export function ItinerarySheet({
       : 0;
   const stopsCount = itinerary ? chargingStops.length : showMockFallback ? 2 : 0;
   const chargeTimeMin = itinerary ? totalChargeTimeMin : showMockFallback ? 60 : 0;
+  const tripCost = estimateTripCost(batteryKwh, itinerary);
+  const showCost = tripCost > 0;
 
   // ---- Drag handlers (touch / pen / mouse) ----
   const onPointerDown = (e: React.PointerEvent) => {
@@ -161,6 +193,7 @@ export function ItinerarySheet({
             {totalDistanceKm.toFixed(0)} km · {formatDuration(totalDurationMin)} ·{' '}
             {stopsCount} {stopsCount === 1 ? 'stop' : 'stops'} ·{' '}
             {chargeTimeMin.toFixed(0)} min charging
+            {showCost && <> · ~₹{Math.round(tripCost).toLocaleString('en-IN')}</>}
           </div>
         </div>
       </div>
@@ -205,8 +238,15 @@ export function ItinerarySheet({
               </div>
             </div>
 
-            <div className="text-[11px] text-[#8C8778] mt-2">
-              via NH48 · charge-optimised for {vehicleName}
+            <div className="text-[11px] text-[#8C8778] mt-2 flex items-center justify-between gap-2">
+              <span className="truncate">
+                via NH48 · charge-optimised for {vehicleName}
+              </span>
+              {showCost && (
+                <span className="font-mono-custom font-bold text-[#96692A] flex-shrink-0">
+                  ~₹{Math.round(tripCost).toLocaleString('en-IN')}
+                </span>
+              )}
             </div>
 
             <button
