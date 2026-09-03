@@ -69,6 +69,16 @@ export function MapView({
 
         layerGroupRef.current = L.layerGroup().addTo(map);
         mapInstanceRef.current = map;
+
+        // Keep the map correct when its container resizes (e.g. the bottom
+        // sheet expands/collapses and the visible map area changes).
+        if (typeof ResizeObserver !== 'undefined') {
+          const ro = new ResizeObserver(() => {
+            map.invalidateSize();
+          });
+          ro.observe(mapContainerRef.current);
+          (map as unknown as { __resizeObserver?: ResizeObserver }).__resizeObserver = ro;
+        }
       }
 
       const map = mapInstanceRef.current;
@@ -184,12 +194,32 @@ export function MapView({
         });
       }
 
-      // Display other Corridor & Nearby Chargers (Bolt.Earth, Statiq, Tata Power, etc.)
+      // Display chargers along the route corridor (or all when a charger
+      // filter is active). In "route" mode we only plot chargers close to the
+      // route line so the map doesn't get cluttered with chargers across the
+      // whole country.
       const shouldShowAll = activeFilter === 'chargers' || activeFilter === 'dc_fast' || activeFilter === 'nh48';
+
+      const isNearRoute = (lat: number, lng: number): boolean => {
+        // Approx. distance from a point to the route polyline (degree-based,
+        // good enough to filter out far-away chargers). ~0.5 deg lat ~ 55 km.
+        if (!polylineCoords.length) return true;
+        const latDelta = 0.6; // ~65 km corridor
+        const lngDelta = 0.6;
+        return polylineCoords.some(
+          ([plLat, plLng]) =>
+            Math.abs(plLat - lat) <= latDelta && Math.abs(plLng - lng) <= lngDelta
+        );
+      };
 
       allChargers.forEach((charger) => {
         // Don't duplicate planned stop
         if (plannedStopChargerIds.has(charger.id)) return;
+
+        // In route mode, only show chargers hugging the route corridor.
+        if (activeFilter === 'route' && !isNearRoute(charger.latitude, charger.longitude)) {
+          return;
+        }
 
         // Filter based on DC fast only
         if (activeFilter === 'dc_fast' && charger.power_kw < 30) return;
