@@ -47,6 +47,7 @@ def upgrade() -> None:
     connector_type = postgresql.ENUM(
         'Type 2', 'Bharat AC-001', 'CCS2', 'GB/T',
         'Bharat DC-001', 'CHAdeMO', 'Tesla NACS',
+        'Type 6', 'Type 7',
         name='connectortype', create_type=False
     )
     connector_type.create(op.get_bind(), checkfirst=True)

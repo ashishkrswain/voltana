@@ -17,6 +17,9 @@ class ConnectorType(str, enum.Enum):
     BHARAT_DC_001 = "Bharat DC-001"
     CHADEMO = "CHAdeMO"
     TESLA_NACS = "Tesla NACS"
+    # India light-EV DC fast standards (IS 17017-2-6 / -2-7)
+    TYPE6 = "Type 6"
+    TYPE7 = "Type 7"
 
 
 class ChargerStatus(str, enum.Enum):
