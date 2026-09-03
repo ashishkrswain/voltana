@@ -24,6 +24,7 @@ import { TripLoadingState } from '@/components/TripLoadingState';
 import { TripErrorState } from '@/components/TripErrorState';
 import { TripHistorySheet } from '@/components/TripHistorySheet';
 import { OnboardingModal } from '@/components/OnboardingModal';
+import { SettingsSheet } from '@/components/SettingsSheet';
 
 interface PlanError {
   message: string;
@@ -37,6 +38,36 @@ interface PlanError {
 }
 
 const ONBOARDING_SEEN_KEY = 'voltana_onboarding_seen';
+const DEFAULTS_KEY = 'voltana_trip_defaults';
+
+interface TripDefaults {
+  avgSpeed: number;
+  safetyBuffer: number;
+}
+
+function loadDefaults(): TripDefaults {
+  try {
+    const raw = localStorage.getItem(DEFAULTS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<TripDefaults>;
+      return {
+        avgSpeed:
+          typeof parsed.avgSpeed === 'number' && parsed.avgSpeed >= 20 && parsed.avgSpeed <= 120
+            ? parsed.avgSpeed
+            : 60,
+        safetyBuffer:
+          typeof parsed.safetyBuffer === 'number' &&
+          parsed.safetyBuffer >= 5 &&
+          parsed.safetyBuffer <= 50
+            ? parsed.safetyBuffer
+            : 18,
+      };
+    }
+  } catch {
+    /* ignore */
+  }
+  return { avgSpeed: 60, safetyBuffer: 18 };
+}
 
 function formatTripDate(iso: string): string {
   try {
@@ -54,6 +85,7 @@ export default function Home() {
   const [batteryPct, setBatteryPct] = useState<number>(78);
   const [itinerary, setItinerary] = useState<TripPlanResponse | null>(null);
   const [allChargers, setAllChargers] = useState<Charger[]>([]);
+  const [acChargers, setAcChargers] = useState<Charger[] | null>(null);
   const [planning, setPlanning] = useState(false);
   const [error, setError] = useState<PlanError | null>(null);
 
@@ -72,6 +104,10 @@ export default function Home() {
   const [activeFilter, setActiveFilter] = useState('route');
   const [selectedCharger, setSelectedCharger] = useState<TripStop | null>(null);
   const [isVehicleModalOpen, setIsVehicleModalOpen] = useState(false);
+
+  // Trip defaults (speed + safety buffer), persisted locally
+  const [defaults, setDefaults] = useState<TripDefaults>(loadDefaults);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // History + onboarding state
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
@@ -123,9 +159,9 @@ export default function Home() {
           origin_lng: originPlace.lng,
           dest_lat: destPlace.lat,
           dest_lng: destPlace.lng,
-          assumed_avg_speed_kmph: 60,
+          assumed_avg_speed_kmph: defaults.avgSpeed,
           starting_battery_pct: soc,
-          safety_buffer_pct: 18,
+          safety_buffer_pct: defaults.safetyBuffer,
         });
         setItinerary(result);
 
@@ -142,9 +178,9 @@ export default function Home() {
               dest_name: destPlace.name,
               dest_lat: destPlace.lat,
               dest_lng: destPlace.lng,
-              assumed_avg_speed_kmph: 60,
+              assumed_avg_speed_kmph: defaults.avgSpeed,
               starting_battery_pct: soc,
-              safety_buffer_pct: 18,
+              safety_buffer_pct: defaults.safetyBuffer,
               total_distance_km: result.total_distance_km,
               total_estimated_duration_min: result.total_estimated_duration_min,
             });
@@ -185,16 +221,16 @@ export default function Home() {
         setPlanning(false);
       }
     },
-    []
+    [defaults]
   );
 
-  // Recalculate trip when vehicle, battery, origin, or destination changes
+  // Recalculate trip when vehicle, battery, origin, destination, or defaults change
   useEffect(() => {
     if (selectedVehicle) {
       handleCalculateRoute(selectedVehicle, batteryPct, origin, dest);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedVehicle, batteryPct, origin, dest]);
+  }, [selectedVehicle, batteryPct, origin, dest, defaults]);
 
   // First-run onboarding (skippable, localStorage-backed)
   useEffect(() => {
@@ -238,6 +274,42 @@ export default function Home() {
     }
   };
 
+  const handleDefaultsChange = (next: TripDefaults) => {
+    setDefaults(next);
+    try {
+      localStorage.setItem(DEFAULTS_KEY, JSON.stringify(next));
+    } catch {
+      /* ignore */
+    }
+    setError(null);
+  };
+
+  // "Show AC charging options nearby" — filter the fetched chargers for ones
+  // compatible with the vehicle's AC port and reveal them on the map.
+  const handleShowACOptions = () => {
+    if (!selectedVehicle) return;
+    const acPort = selectedVehicle.ac_charge_port_type;
+    const matches = allChargers.filter((c) => {
+      if (!acPort) return false;
+      const connectors = (c.connector_types || '').split(',').map((s) => s.trim());
+      return connectors.includes(acPort);
+    });
+    setAcChargers(matches);
+    setError(null);
+    setActiveFilter('chargers');
+    // Drop a pin so the user knows what to look at — surfaced via the sheet.
+    if (matches.length === 0) {
+      setError({
+        message: `No AC (${acPort}) chargers found in the current dataset near this route.`,
+        gap: null,
+      });
+    }
+  };
+
+  const handleClearACOptions = () => {
+    setAcChargers(null);
+  };
+
   const handleSelectPlace = (
     kind: 'origin' | 'dest',
     place: { name: string; lat: number; lng: number }
@@ -269,7 +341,7 @@ export default function Home() {
           destCoords={{ lat: dest.lat, lng: dest.lng }}
           originName={origin.name}
           destName={dest.name}
-          allChargers={allChargers}
+          allChargers={acChargers ?? allChargers}
           activeFilter={activeFilter}
           onSelectCharger={(stop) => setSelectedCharger(stop)}
         />
@@ -291,13 +363,20 @@ export default function Home() {
           onClick={() => setIsVehicleModalOpen(true)}
         />
 
-        {/* History button (below search header, right side) */}
+        {/* History + Settings buttons (below search header, right side) */}
         <button
           onClick={openHistory}
           title="Trip history"
           className="absolute top-[136px] right-3 z-40 w-9 h-9 rounded-full bg-white shadow-md border border-gray-100 flex items-center justify-center text-base hover:bg-gray-50 active:scale-95 transition-all"
         >
           🕘
+        </button>
+        <button
+          onClick={() => setIsSettingsOpen(true)}
+          title="Settings"
+          className="absolute top-[182px] right-3 z-40 w-9 h-9 rounded-full bg-white shadow-md border border-gray-100 flex items-center justify-center text-base hover:bg-gray-50 active:scale-95 transition-all"
+        >
+          ⚙️
         </button>
 
         {/* Error state */}
@@ -313,7 +392,31 @@ export default function Home() {
               setError(null);
               setIsVehicleModalOpen(true);
             }}
+            onShowACOptions={handleShowACOptions}
           />
+        )}
+
+        {/* AC options notice (shown after "Show AC charging options") */}
+        {acChargers && !error && !planning && (
+          <div className="absolute top-[120px] left-3 z-40 bg-[#16221D] text-white rounded-2xl px-3.5 py-2.5 shadow-lg border border-white/10 text-xs flex items-center gap-2.5 max-w-[280px]">
+            <span className="flex-shrink-0">⚡</span>
+            <div className="min-w-0">
+              <div className="font-semibold truncate">
+                {acChargers.length} AC-compatible charger
+                {acChargers.length === 1 ? '' : 's'} found
+              </div>
+              <div className="text-[10px] text-white/70">
+                {selectedVehicle?.ac_charge_port_type || 'AC'} outlets near this
+                route
+              </div>
+            </div>
+            <button
+              onClick={handleClearACOptions}
+              className="ml-auto text-white/70 hover:text-white font-bold text-sm pl-1"
+            >
+              ✕
+            </button>
+          </div>
         )}
 
         {/* Route-calculating loading overlay */}
@@ -390,6 +493,15 @@ export default function Home() {
           }}
           hasVehicle={selectedVehicle !== null}
           vehicleName={vehicleDisplayName}
+        />
+
+        {/* Settings */}
+        <SettingsSheet
+          isOpen={isSettingsOpen}
+          onClose={() => setIsSettingsOpen(false)}
+          avgSpeed={defaults.avgSpeed}
+          safetyBuffer={defaults.safetyBuffer}
+          onChange={handleDefaultsChange}
         />
       </div>
     </main>
