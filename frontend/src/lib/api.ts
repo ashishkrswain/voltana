@@ -171,3 +171,60 @@ export async function planTrip(request: TripPlanRequest): Promise<TripPlanRespon
   const { data } = await api.post('/trip/plan', request);
   return data;
 }
+
+// ---- Trip history ("plan again") ----
+
+export interface SavedTrip {
+  id: string;
+  vehicle_id: string;
+  origin_name: string;
+  origin_lat: number;
+  origin_lng: number;
+  dest_name: string;
+  dest_lat: number;
+  dest_lng: number;
+  assumed_avg_speed_kmph: number;
+  starting_battery_pct: number;
+  safety_buffer_pct: number;
+  total_distance_km: number;
+  total_estimated_duration_min: number;
+  created_at: string;
+  vehicle_make?: string | null;
+  vehicle_model?: string | null;
+  vehicle_variant?: string | null;
+}
+
+export interface SavedTripListResponse {
+  trips: SavedTrip[];
+  total: number;
+}
+
+export async function listTrips(params?: {
+  page?: number;
+  page_size?: number;
+}): Promise<SavedTripListResponse> {
+  const { data } = await api.get('/trips', { params });
+  return data;
+}
+
+export async function saveTrip(request: {
+  vehicle_id: string;
+  origin_name: string;
+  origin_lat: number;
+  origin_lng: number;
+  dest_name: string;
+  dest_lat: number;
+  dest_lng: number;
+  assumed_avg_speed_kmph: number;
+  starting_battery_pct: number;
+  safety_buffer_pct: number;
+  total_distance_km: number;
+  total_estimated_duration_min: number;
+}): Promise<SavedTrip> {
+  const { data } = await api.post('/trips', request);
+  return data;
+}
+
+export async function deleteTrip(id: string): Promise<void> {
+  await api.delete(`/trips/${id}`);
+}

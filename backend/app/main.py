@@ -4,8 +4,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.database import Base, engine
-from app.routers import vehicles, chargers, trip
-from app.models import Vehicle, Charger, ChargerNetwork
+from app.routers import vehicles, chargers, trip, trips
+from app.models import Vehicle, Charger, ChargerNetwork, SavedTrip
 
 
 @asynccontextmanager
@@ -32,6 +32,7 @@ app.add_middleware(
 app.include_router(vehicles.router)
 app.include_router(chargers.router)
 app.include_router(trip.router)
+app.include_router(trips.router)
 
 
 @app.get("/health")

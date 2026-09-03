@@ -26,6 +26,11 @@ from app.schemas.charger import (
     ChargerResponse,
     ChargerListResponse,
 )
+from app.schemas.trip import (
+    TripCreate,
+    TripResponse,
+    TripListResponse,
+)
 
 __all__ = [
     "VehicleCategory",
@@ -52,4 +57,7 @@ __all__ = [
     "ChargerUpdate",
     "ChargerResponse",
     "ChargerListResponse",
+    "TripCreate",
+    "TripResponse",
+    "TripListResponse",
 ]

@@ -1,5 +1,6 @@
 from app.models.vehicle import Vehicle, EfficiencyCurve, RangeConfidence, VehicleCategory, VehicleStatus, RangeConfidenceLevel, EfficiencySource
 from app.models.charger import Charger, ChargerNetwork, ConnectorType, ChargerStatus
+from app.models.trip import SavedTrip
 
 __all__ = [
     "Vehicle",
@@ -13,4 +14,5 @@ __all__ = [
     "ChargerNetwork",
     "ConnectorType",
     "ChargerStatus",
+    "SavedTrip",
 ]

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.models import Vehicle
-from app.services import TripPlanner, TripInput, TripItinerary
+from app.services import TripPlanner, TripInput, TripItinerary, NoChargerGapError
 
 router = APIRouter(prefix="/trip", tags=["trip"])
 
@@ -78,6 +78,21 @@ async def plan_trip(request: TripPlanRequest, db: Session = Depends(get_db)):
 
     try:
         itinerary = await planner.plan_trip(trip_input)
+    except NoChargerGapError as e:
+        # Structured "no charger found on this stretch" error the UI can render
+        # with the exact km gap and remaining range.
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "type": "no_charger_gap",
+                "message": str(e),
+                "gap_start_km": round(e.gap_start_km, 1),
+                "gap_end_km": round(e.gap_end_km, 1),
+                "remaining_range_km": round(e.remaining_range_km, 1),
+                "current_battery_pct": round(e.current_battery_pct, 1),
+                "current_km": round(e.current_km, 1),
+            },
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

@@ -1,0 +1,19 @@
+{
+  "name": "voltana-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "packageManager": "npm@11.6.2",
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0",
+    "turbo": "^2.1.2"
+  }
+}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { TripPlanResponse, TripStop } from '@/lib/api';
 
 interface ItinerarySheetProps {
@@ -11,7 +11,12 @@ interface ItinerarySheetProps {
   onSelectCharger?: (stop: TripStop) => void;
   onStartJourney?: () => void;
   isPlanning?: boolean;
+  /** Start expanded (showing full card) or collapsed (mini bar). Default: collapsed. */
+  defaultExpanded?: boolean;
 }
+
+const COLLAPSED_HEIGHT = 100; // px — handle + summary bar
+const MAX_VISIBLE_HEIGHT = 'min(72vh, 620px)';
 
 function formatDuration(minutes: number): string {
   const hours = Math.floor(minutes / 60);
@@ -29,10 +34,20 @@ export function ItinerarySheet({
   onSelectCharger,
   onStartJourney,
   isPlanning = false,
+  defaultExpanded = false,
 }: ItinerarySheetProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(defaultExpanded);
+  const [dragging, setDragging] = useState(false);
+  const [dragDelta, setDragDelta] = useState(0);
+  const gesture = useRef<{
+    startY: number;
+    expandedAtStart: boolean;
+    moved: boolean;
+  } | null>(null);
+  const didDragRef = useRef(false);
 
-  // Calculate charging stops count and charge time
+  // Charging-stops summary. Live from itinerary; small static preview only
+  // before the first plan resolves.
   const chargingStops = itinerary
     ? itinerary.legs.filter((l) => l.stop !== null)
     : [];
@@ -40,279 +55,356 @@ export function ItinerarySheet({
     (acc, l) => acc + (l.stop?.estimated_charge_time_min || 0),
     0
   );
+  const showMockFallback = itinerary === null && !isPlanning;
+  const totalDistanceKm = itinerary
+    ? itinerary.total_distance_km
+    : showMockFallback
+      ? 560
+      : 0;
+  const totalDurationMin = itinerary
+    ? itinerary.total_estimated_duration_min
+    : showMockFallback
+      ? 585
+      : 0;
+  const stopsCount = itinerary ? chargingStops.length : showMockFallback ? 2 : 0;
+  const chargeTimeMin = itinerary ? totalChargeTimeMin : showMockFallback ? 60 : 0;
 
-  const totalDistanceKm = itinerary ? itinerary.total_distance_km : 560;
-  const totalDurationMin = itinerary ? itinerary.total_estimated_duration_min : 585;
-  const stopsCount = chargingStops.length > 0 ? chargingStops.length : 2;
-  const chargeTimeMin = totalChargeTimeMin > 0 ? totalChargeTimeMin : 60;
+  // ---- Drag handlers (touch / pen / mouse) ----
+  const onPointerDown = (e: React.PointerEvent) => {
+    gesture.current = {
+      startY: e.clientY,
+      expandedAtStart: expanded,
+      moved: false,
+    };
+    didDragRef.current = false;
+    setDragging(true);
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+
+  const onPointerMove = (e: React.PointerEvent) => {
+    const g = gesture.current;
+    if (!g) return;
+    const delta = e.clientY - g.startY;
+    if (Math.abs(delta) > 6) {
+      g.moved = true;
+      didDragRef.current = true;
+    }
+    // Only allow pulling the sheet down (minimize), not up beyond full.
+    setDragDelta(Math.max(0, delta));
+  };
+
+  const endGesture = () => {
+    const g = gesture.current;
+    // Pull-down gesture on the expanded sheet collapses it.
+    if (g && g.moved && g.expandedAtStart) setExpanded(false);
+    setDragging(false);
+    setDragDelta(0);
+    gesture.current = null;
+  };
+
+  const toggle = () => setExpanded((v) => !v);
+
+  const style: React.CSSProperties = {
+    height: expanded ? MAX_VISIBLE_HEIGHT : COLLAPSED_HEIGHT,
+    transform: dragging ? `translateY(${dragDelta}px)` : undefined,
+    transition: dragging
+      ? 'none'
+      : 'height 300ms cubic-bezier(0.22, 1, 0.36, 1), transform 300ms cubic-bezier(0.22, 1, 0.36, 1)',
+  };
 
   return (
     <div
-      className={`absolute left-0 right-0 bottom-0 z-30 bg-[#FAF9F5] rounded-t-3xl shadow-[-6px_0_24px_rgba(0,0,0,0.18)] border-t border-[#E2DED3] transition-all duration-300 flex flex-col ${
-        isExpanded ? 'max-h-[85%]' : 'max-h-[58%] md:max-h-[50%]'
-      }`}
+      className="absolute left-0 right-0 bottom-0 z-30 bg-[#FAF9F5] rounded-t-3xl shadow-[-6px_0_24px_rgba(0,0,0,0.18)] border-t border-[#E2DED3] flex flex-col overflow-hidden"
+      style={style}
     >
-      {/* Handle */}
+      {/* Grab zone: handle + always-visible route header */}
       <div
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full py-2 flex items-center justify-center cursor-pointer select-none"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endGesture}
+        onPointerCancel={endGesture}
+        onClick={() => {
+          // Toggle on a plain tap (no drag movement).
+          if (!didDragRef.current) toggle();
+          didDragRef.current = false;
+        }}
+        className="w-full flex-shrink-0 cursor-pointer select-none"
+        style={{ touchAction: 'pan-y' }}
       >
-        <div className="w-9 h-1 bg-[#D5D7DA] rounded-full hover:bg-gray-400 transition-colors" />
-      </div>
+        {/* Handle */}
+        <div className="w-full py-2 flex items-center justify-center">
+          <div className="w-9 h-1 bg-[#D5D7DA] rounded-full" />
+        </div>
 
-      {/* Route Summary */}
-      <div className="px-5 pb-3.5 border-b border-[#E2DED3]">
-        <div className="flex items-center justify-between">
-          <div className="text-[17px] font-bold text-[#16221D] flex items-center gap-1.5 font-serif-custom">
-            {originName} → {destName}
-          </div>
-          {isPlanning && (
-            <span className="text-xs bg-[#E1EAE4] text-[#2F5C50] font-semibold px-2 py-0.5 rounded-full animate-pulse">
-              Calculating...
+        {/* Route header */}
+        <div className="px-5 pb-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="text-[#16221D] font-bold text-[15px] truncate font-serif-custom">
+                {originName} → {destName}
+              </div>
+              {isPlanning && (
+                <span className="text-[10px] bg-[#E1EAE4] text-[#2F5C50] font-semibold px-2 py-0.5 rounded-full animate-pulse whitespace-nowrap">
+                  Calculating…
+                </span>
+              )}
+            </div>
+            <span
+              className={`text-[#8C8778] text-sm flex-shrink-0 ml-2 transition-transform duration-300 ${
+                expanded ? '' : 'rotate-180'
+              }`}
+            >
+              ▼
             </span>
-          )}
-        </div>
-        <div className="text-xs text-[#8C8778] mt-0.5">
-          via NH48 · charge-optimised for {vehicleName}
-        </div>
-
-        {/* Metrics Row */}
-        <div className="flex gap-4 mt-3">
-          <div className="flex flex-col">
-            <div className="font-mono-custom text-[15px] font-bold text-[#16221D]">
-              {totalDistanceKm.toFixed(0)} km
-            </div>
-            <div className="text-[10px] uppercase tracking-wider text-[#8C8778] mt-0.5">
-              distance
-            </div>
           </div>
-          <div className="flex flex-col">
-            <div className="font-mono-custom text-[15px] font-bold text-[#16221D]">
-              {formatDuration(totalDurationMin)}
-            </div>
-            <div className="text-[10px] uppercase tracking-wider text-[#8C8778] mt-0.5">
-              total time
-            </div>
-          </div>
-          <div className="flex flex-col">
-            <div className="font-mono-custom text-[15px] font-bold text-[#96692A]">
-              {stopsCount} {stopsCount === 1 ? 'stop' : 'stops'}
-            </div>
-            <div className="text-[10px] uppercase tracking-wider text-[#8C8778] mt-0.5">
-              charging
-            </div>
-          </div>
-          <div className="flex flex-col">
-            <div className="font-mono-custom text-[15px] font-bold text-[#16221D]">
-              {chargeTimeMin.toFixed(0)} min
-            </div>
-            <div className="text-[10px] uppercase tracking-wider text-[#8C8778] mt-0.5">
-              charge time
-            </div>
+          <div className="text-[11px] text-[#8C8778] mt-0.5 font-mono-custom">
+            {totalDistanceKm.toFixed(0)} km · {formatDuration(totalDurationMin)} ·{' '}
+            {stopsCount} {stopsCount === 1 ? 'stop' : 'stops'} ·{' '}
+            {chargeTimeMin.toFixed(0)} min charging
           </div>
         </div>
-
-        {/* Start Journey CTA */}
-        <button
-          onClick={onStartJourney}
-          className="mt-3.5 w-full bg-[#2F5C50] text-white rounded-full py-2.5 px-5 text-sm font-semibold flex items-center justify-center gap-2 hover:bg-[#254b41] active:scale-[0.99] transition-all shadow-md"
-        >
-          <span>▶</span> Start journey
-        </button>
       </div>
 
-      {/* Step-by-step leg list */}
-      <div className="overflow-y-auto px-5 py-3 flex-1 no-scrollbar divide-y divide-[#F1EFE8]">
-        {itinerary ? (
-          <>
-            {/* Start point */}
-            <div className="flex items-start gap-3 py-2.5">
-              <div className="w-7 h-7 rounded-full bg-[#2F5C50] text-white flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">
-                ●
-              </div>
-              <div className="flex-1">
-                <div className="text-[13.5px] font-semibold text-[#16221D] flex justify-between">
-                  <span>Depart {originName}</span>
-                  <span className="font-mono-custom text-[11px] text-[#8C8778]">km 0</span>
+      {/* Expanded content */}
+      {expanded && (
+        <div className="flex-1 min-h-0 flex flex-col">
+          {/* Metrics + CTA */}
+          <div className="px-5 pb-3.5 border-t border-[#E2DED3] bg-white/40">
+            <div className="flex gap-4 mt-3">
+              <div className="flex flex-col">
+                <div className="font-mono-custom text-[15px] font-bold text-[#16221D]">
+                  {totalDistanceKm.toFixed(0)} km
                 </div>
-                <div className="text-xs text-[#8C8778] mt-0.5">
-                  <b className="font-mono-custom text-[#2F5C50] font-bold">100%</b> battery
+                <div className="text-[10px] uppercase tracking-wider text-[#8C8778] mt-0.5">
+                  distance
+                </div>
+              </div>
+              <div className="flex flex-col">
+                <div className="font-mono-custom text-[15px] font-bold text-[#16221D]">
+                  {formatDuration(totalDurationMin)}
+                </div>
+                <div className="text-[10px] uppercase tracking-wider text-[#8C8778] mt-0.5">
+                  total time
+                </div>
+              </div>
+              <div className="flex flex-col">
+                <div className="font-mono-custom text-[15px] font-bold text-[#96692A]">
+                  {stopsCount} {stopsCount === 1 ? 'stop' : 'stops'}
+                </div>
+                <div className="text-[10px] uppercase tracking-wider text-[#8C8778] mt-0.5">
+                  charging
+                </div>
+              </div>
+              <div className="flex flex-col">
+                <div className="font-mono-custom text-[15px] font-bold text-[#16221D]">
+                  {chargeTimeMin.toFixed(0)} min
+                </div>
+                <div className="text-[10px] uppercase tracking-wider text-[#8C8778] mt-0.5">
+                  charge time
                 </div>
               </div>
             </div>
 
-            {/* Intermediate legs and charging stops */}
-            {itinerary.legs.map((leg, idx) => {
-              if (leg.stop) {
-                const stop = leg.stop;
-                return (
-                  <div
-                    key={idx}
-                    onClick={() => onSelectCharger && onSelectCharger(stop)}
-                    className="flex items-start gap-3 py-2.5 cursor-pointer hover:bg-[#E1EAE4]/30 rounded-xl px-1 -mx-1 transition-colors"
-                  >
-                    <div className="w-7 h-7 rounded-full bg-[#FBEFDC] border-1.5 border-[#B8863F] text-[#96692A] flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">
-                      ⚡
+            <div className="text-[11px] text-[#8C8778] mt-2">
+              via NH48 · charge-optimised for {vehicleName}
+            </div>
+
+            <button
+              onClick={onStartJourney}
+              className="mt-3 w-full bg-[#2F5C50] text-white rounded-full py-2.5 px-5 text-sm font-semibold flex items-center justify-center gap-2 hover:bg-[#254b41] active:scale-[0.99] transition-all shadow-md"
+            >
+              <span>▶</span> Start journey
+            </button>
+          </div>
+
+          {/* Leg list */}
+          <div className="overflow-y-auto px-5 py-3 flex-1 no-scrollbar divide-y divide-[#F1EFE8]">
+            {itinerary ? (
+              <>
+                <div className="flex items-start gap-3 py-2.5">
+                  <div className="w-7 h-7 rounded-full bg-[#2F5C50] text-white flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">
+                    ●
+                  </div>
+                  <div className="flex-1">
+                    <div className="text-[13.5px] font-semibold text-[#16221D] flex justify-between">
+                      <span>Depart {originName}</span>
+                      <span className="font-mono-custom text-[11px] text-[#8C8778]">
+                        km 0
+                      </span>
                     </div>
-                    <div className="flex-1">
-                      <div className="text-[13.5px] font-semibold text-[#16221D] flex justify-between items-center">
-                        <span className="hover:text-[#96692A] transition-colors">
-                          {stop.charger_name}
-                        </span>
-                        <span className="font-mono-custom text-[11px] text-[#8C8778]">
-                          km {stop.km_marker.toFixed(0)}
-                        </span>
-                      </div>
-                      <div className="text-xs text-[#8C8778] mt-0.5 flex items-center gap-2">
-                        <span className="font-mono-custom text-[#2F5C50] font-bold">
-                          {Math.round(stop.arrival_battery_pct)}% → {Math.round(stop.charge_to_pct)}%
-                        </span>
-                        <span>·</span>
-                        <span>
-                          {Math.round(stop.estimated_charge_time_min)} min ·{' '}
-                          {stop.power_kw ? `${stop.power_kw.toFixed(0)} kW DC` : '50 kW DC'}
-                        </span>
-                      </div>
+                    <div className="text-xs text-[#8C8778] mt-0.5">
+                      <b className="font-mono-custom text-[#2F5C50] font-bold">
+                        {Math.round(
+                          itinerary.legs[0]?.battery_start_pct ?? 100
+                        )}
+                        %
+                      </b>{' '}
+                      battery
                     </div>
                   </div>
-                );
-              }
-              return null;
-            })}
+                </div>
 
-            {/* Destination Point */}
-            <div className="flex items-start gap-3 py-2.5">
-              <div className="w-7 h-7 rounded-full bg-[#16221D] text-white flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">
-                ◆
-              </div>
-              <div className="flex-1">
-                <div className="text-[13.5px] font-semibold text-[#16221D] flex justify-between">
-                  <span>Arrive {destName}</span>
-                  <span className="font-mono-custom text-[11px] text-[#8C8778]">
-                    km {itinerary.total_distance_km.toFixed(0)}
-                  </span>
-                </div>
-                <div className="text-xs text-[#8C8778] mt-0.5">
-                  <b className="font-mono-custom text-[#2F5C50] font-bold">
-                    ~{Math.max(15, Math.round(itinerary.legs[itinerary.legs.length - 1]?.battery_end_pct || 18))}%
-                  </b>{' '}
-                  battery remaining
-                </div>
-              </div>
-            </div>
-          </>
-        ) : (
-          /* Static preview fallback matching mockup */
-          <>
-            <div className="flex items-start gap-3 py-2.5">
-              <div className="w-7 h-7 rounded-full bg-[#2F5C50] text-white flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">
-                ●
-              </div>
-              <div className="flex-1">
-                <div className="text-[13.5px] font-semibold text-[#16221D] flex justify-between">
-                  <span>Depart Bengaluru</span>
-                  <span className="font-mono-custom text-[11px] text-[#8C8778]">km 0</span>
-                </div>
-                <div className="text-xs text-[#8C8778] mt-0.5">
-                  <b className="font-mono-custom text-[#2F5C50] font-bold">100%</b> battery
-                </div>
-              </div>
-            </div>
+                {itinerary.legs.map((leg, idx) => {
+                  if (!leg.stop) return null;
+                  const stop = leg.stop;
+                  return (
+                    <div
+                      key={idx}
+                      onClick={() => onSelectCharger && onSelectCharger(stop)}
+                      className="flex items-start gap-3 py-2.5 cursor-pointer hover:bg-[#E1EAE4]/30 rounded-xl px-1 -mx-1 transition-colors"
+                    >
+                      <div className="w-7 h-7 rounded-full bg-[#FBEFDC] border-1.5 border-[#B8863F] text-[#96692A] flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">
+                        ⚡
+                      </div>
+                      <div className="flex-1">
+                        <div className="text-[13.5px] font-semibold text-[#16221D] flex justify-between items-center">
+                          <span className="hover:text-[#96692A] transition-colors">
+                            {stop.charger_name}
+                          </span>
+                          <span className="font-mono-custom text-[11px] text-[#8C8778]">
+                            km {stop.km_marker.toFixed(0)}
+                          </span>
+                        </div>
+                        <div className="text-xs text-[#8C8778] mt-0.5 flex items-center gap-2">
+                          <span className="font-mono-custom text-[#2F5C50] font-bold">
+                            {Math.round(stop.arrival_battery_pct)}% →{' '}
+                            {Math.round(stop.charge_to_pct)}%
+                          </span>
+                          <span>·</span>
+                          <span>
+                            {Math.round(stop.estimated_charge_time_min)} min ·{' '}
+                            {stop.power_kw
+                              ? `${stop.power_kw.toFixed(0)} kW DC`
+                              : '50 kW DC'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
 
-            <div
-              onClick={() =>
-                onSelectCharger &&
-                onSelectCharger({
-                  charger_name: 'Statiq — NH48, Hassan',
-                  km_marker: 187,
-                  arrival_battery_pct: 24,
-                  charge_to_pct: 80,
-                  estimated_charge_time_min: 32,
-                  charger_id: 'mock-1',
-                  charger_address: 'NH48, near Hassan Bypass, Karnataka 573201',
-                  power_kw: 60,
-                  network_name: 'Statiq',
-                  connector_types: 'CCS2, Type 2',
-                })
-              }
-              className="flex items-start gap-3 py-2.5 cursor-pointer hover:bg-[#E1EAE4]/30 rounded-xl px-1 -mx-1 transition-colors"
-            >
-              <div className="w-7 h-7 rounded-full bg-[#FBEFDC] border-1.5 border-[#B8863F] text-[#96692A] flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">
-                ⚡
-              </div>
-              <div className="flex-1">
-                <div className="text-[13.5px] font-semibold text-[#16221D] flex justify-between items-center">
-                  <span className="hover:text-[#96692A] transition-colors">
-                    Statiq — NH48, Hassan
-                  </span>
-                  <span className="font-mono-custom text-[11px] text-[#8C8778]">km 187</span>
+                <div className="flex items-start gap-3 py-2.5">
+                  <div className="w-7 h-7 rounded-full bg-[#16221D] text-white flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">
+                    ◆
+                  </div>
+                  <div className="flex-1">
+                    <div className="text-[13.5px] font-semibold text-[#16221D] flex justify-between">
+                      <span>Arrive {destName}</span>
+                      <span className="font-mono-custom text-[11px] text-[#8C8778]">
+                        km {itinerary.total_distance_km.toFixed(0)}
+                      </span>
+                    </div>
+                    <div className="text-xs text-[#8C8778] mt-0.5">
+                      <b className="font-mono-custom text-[#2F5C50] font-bold">
+                        ~
+                        {Math.max(
+                          10,
+                          Math.round(
+                            itinerary.legs[itinerary.legs.length - 1]
+                              ?.battery_end_pct ?? 18
+                          )
+                        )}
+                        %
+                      </b>{' '}
+                      battery remaining
+                    </div>
+                  </div>
                 </div>
-                <div className="text-xs text-[#8C8778] mt-0.5 flex items-center gap-2">
-                  <span className="font-mono-custom text-[#2F5C50] font-bold">24% → 80%</span>
-                  <span>·</span>
-                  <span>32 min · 60 kW DC</span>
+              </>
+            ) : showMockFallback ? (
+              <>
+                <div className="flex items-start gap-3 py-2.5">
+                  <div className="w-7 h-7 rounded-full bg-[#2F5C50] text-white flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">
+                    ●
+                  </div>
+                  <div className="flex-1">
+                    <div className="text-[13.5px] font-semibold text-[#16221D] flex justify-between">
+                      <span>Depart Bengaluru</span>
+                      <span className="font-mono-custom text-[11px] text-[#8C8778]">
+                        km 0
+                      </span>
+                    </div>
+                    <div className="text-xs text-[#8C8778] mt-0.5">
+                      <b className="font-mono-custom text-[#2F5C50] font-bold">
+                        100%
+                      </b>{' '}
+                      battery
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
 
-            <div
-              onClick={() =>
-                onSelectCharger &&
-                onSelectCharger({
-                  charger_name: 'Tata Power — Belur Bypass',
-                  km_marker: 341,
-                  arrival_battery_pct: 21,
-                  charge_to_pct: 75,
-                  estimated_charge_time_min: 28,
-                  charger_id: 'mock-2',
-                  charger_address: 'NH73 / Belur Bypass, Karnataka',
-                  power_kw: 50,
-                  network_name: 'Tata Power EZ Charge',
-                  connector_types: 'CCS2, Type 2',
-                })
-              }
-              className="flex items-start gap-3 py-2.5 cursor-pointer hover:bg-[#E1EAE4]/30 rounded-xl px-1 -mx-1 transition-colors"
-            >
-              <div className="w-7 h-7 rounded-full bg-[#FBEFDC] border-1.5 border-[#B8863F] text-[#96692A] flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">
-                ⚡
-              </div>
-              <div className="flex-1">
-                <div className="text-[13.5px] font-semibold text-[#16221D] flex justify-between items-center">
-                  <span className="hover:text-[#96692A] transition-colors">
-                    Tata Power — Belur Bypass
-                  </span>
-                  <span className="font-mono-custom text-[11px] text-[#8C8778]">km 341</span>
+                <div
+                  onClick={() =>
+                    onSelectCharger &&
+                    onSelectCharger({
+                      charger_name: 'Statiq — NH48, Hassan',
+                      km_marker: 187,
+                      arrival_battery_pct: 24,
+                      charge_to_pct: 80,
+                      estimated_charge_time_min: 32,
+                      charger_id: 'mock-1',
+                      charger_address:
+                        'NH48, near Hassan Bypass, Karnataka 573201',
+                      power_kw: 60,
+                      network_name: 'Statiq',
+                      connector_types: 'CCS2, Type 2',
+                    })
+                  }
+                  className="flex items-start gap-3 py-2.5 cursor-pointer hover:bg-[#E1EAE4]/30 rounded-xl px-1 -mx-1 transition-colors"
+                >
+                  <div className="w-7 h-7 rounded-full bg-[#FBEFDC] border-1.5 border-[#B8863F] text-[#96692A] flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">
+                    ⚡
+                  </div>
+                  <div className="flex-1">
+                    <div className="text-[13.5px] font-semibold text-[#16221D] flex justify-between items-center">
+                      <span>Statiq — NH48, Hassan</span>
+                      <span className="font-mono-custom text-[11px] text-[#8C8778]">
+                        km 187
+                      </span>
+                    </div>
+                    <div className="text-xs text-[#8C8778] mt-0.5 flex items-center gap-2">
+                      <span className="font-mono-custom text-[#2F5C50] font-bold">
+                        24% → 80%
+                      </span>
+                      <span>·</span>
+                      <span>32 min · 60 kW DC</span>
+                    </div>
+                  </div>
                 </div>
-                <div className="text-xs text-[#8C8778] mt-0.5 flex items-center gap-2">
-                  <span className="font-mono-custom text-[#2F5C50] font-bold">21% → 75%</span>
-                  <span>·</span>
-                  <span>28 min · 50 kW DC</span>
-                </div>
-              </div>
-            </div>
 
-            <div className="flex items-start gap-3 py-2.5">
-              <div className="w-7 h-7 rounded-full bg-[#16221D] text-white flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">
-                ◆
-              </div>
-              <div className="flex-1">
-                <div className="text-[13.5px] font-semibold text-[#16221D] flex justify-between">
-                  <span>Arrive Goa</span>
-                  <span className="font-mono-custom text-[11px] text-[#8C8778]">km 560</span>
+                <div className="flex items-start gap-3 py-2.5">
+                  <div className="w-7 h-7 rounded-full bg-[#16221D] text-white flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">
+                    ◆
+                  </div>
+                  <div className="flex-1">
+                    <div className="text-[13.5px] font-semibold text-[#16221D] flex justify-between">
+                      <span>Arrive Goa</span>
+                      <span className="font-mono-custom text-[11px] text-[#8C8778]">
+                        km 560
+                      </span>
+                    </div>
+                    <div className="text-xs text-[#8C8778] mt-0.5">
+                      <b className="font-mono-custom text-[#2F5C50] font-bold">
+                        ~18%
+                      </b>{' '}
+                      battery remaining
+                    </div>
+                  </div>
                 </div>
-                <div className="text-xs text-[#8C8778] mt-0.5">
-                  <b className="font-mono-custom text-[#2F5C50] font-bold">~18%</b> battery remaining
-                </div>
+              </>
+            ) : (
+              <div className="text-center py-10 text-xs text-[#8C8778]">
+                Plan a route to see your charging itinerary.
               </div>
-            </div>
-          </>
-        )}
-      </div>
+            )}
+          </div>
 
-      {/* Disclaimer */}
-      <div className="text-[10.5px] text-[#8C8778] text-center px-5 py-2.5 border-t border-[#E2DED3] bg-white/60">
-        Live charger availability not yet tracked — verify before departure
-      </div>
+          {/* Disclaimer */}
+          <div className="text-[10.5px] text-[#8C8778] text-center px-5 py-2.5 border-t border-[#E2DED3] bg-white/60 flex-shrink-0">
+            Live charger availability not yet tracked — verify before departure
+          </div>
+        </div>
+      )}
     </div>
   );
 }

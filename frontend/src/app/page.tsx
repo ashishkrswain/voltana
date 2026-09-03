@@ -1,13 +1,53 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { Vehicle, Charger, TripPlanResponse, TripStop, listVehicles, listChargers, planTrip } from '@/lib/api';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  Vehicle,
+  Charger,
+  TripPlanResponse,
+  TripStop,
+  SavedTrip,
+  listVehicles,
+  listChargers,
+  planTrip,
+  saveTrip,
+  listTrips,
+  deleteTrip,
+} from '@/lib/api';
 import { MapView } from '@/components/MapView';
 import { SearchHeader } from '@/components/SearchHeader';
 import { VehiclePill } from '@/components/VehiclePill';
 import { ItinerarySheet } from '@/components/ItinerarySheet';
 import { ChargerDetailSheet } from '@/components/ChargerDetailSheet';
 import { VehicleSelectorModal } from '@/components/VehicleSelectorModal';
+import { TripLoadingState } from '@/components/TripLoadingState';
+import { TripErrorState } from '@/components/TripErrorState';
+import { TripHistorySheet } from '@/components/TripHistorySheet';
+import { OnboardingModal } from '@/components/OnboardingModal';
+
+interface PlanError {
+  message: string;
+  gap?: {
+    gap_start_km: number;
+    gap_end_km: number;
+    remaining_range_km: number;
+    current_battery_pct: number;
+    current_km: number;
+  } | null;
+}
+
+const ONBOARDING_SEEN_KEY = 'voltana_onboarding_seen';
+
+function formatTripDate(iso: string): string {
+  try {
+    return new Date(iso).toLocaleDateString('en-IN', {
+      day: 'numeric',
+      month: 'short',
+    });
+  } catch {
+    return '';
+  }
+}
 
 export default function Home() {
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
@@ -15,9 +55,9 @@ export default function Home() {
   const [itinerary, setItinerary] = useState<TripPlanResponse | null>(null);
   const [allChargers, setAllChargers] = useState<Charger[]>([]);
   const [planning, setPlanning] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<PlanError | null>(null);
 
-  const [origin] = useState({
+  const [origin, setOrigin] = useState({
     name: 'Bengaluru',
     lat: 12.9716,
     lng: 77.5946,
@@ -32,6 +72,13 @@ export default function Home() {
   const [activeFilter, setActiveFilter] = useState('route');
   const [selectedCharger, setSelectedCharger] = useState<TripStop | null>(null);
   const [isVehicleModalOpen, setIsVehicleModalOpen] = useState(false);
+
+  // History + onboarding state
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [history, setHistory] = useState<SavedTrip[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const savedVehicleRef = useRef<string | null>(null);
 
   // Initialize with the top Indian EV (e.g. Tata Nexon EV Long Range) and list chargers
   useEffect(() => {
@@ -61,7 +108,8 @@ export default function Home() {
     async (
       v: Vehicle | null,
       soc: number,
-      destCoords: { lat: number; lng: number }
+      originPlace: { name: string; lat: number; lng: number },
+      destPlace: { name: string; lat: number; lng: number }
     ) => {
       if (!v) return;
 
@@ -71,35 +119,135 @@ export default function Home() {
       try {
         const result = await planTrip({
           vehicle_id: v.id,
-          origin_lat: origin.lat,
-          origin_lng: origin.lng,
-          dest_lat: destCoords.lat,
-          dest_lng: destCoords.lng,
+          origin_lat: originPlace.lat,
+          origin_lng: originPlace.lng,
+          dest_lat: destPlace.lat,
+          dest_lng: destPlace.lng,
           assumed_avg_speed_kmph: 60,
           starting_battery_pct: soc,
           safety_buffer_pct: 18,
         });
         setItinerary(result);
+
+        // Persist to trip history so the user can "plan again" later.
+        const routeKey = `${originPlace.lat},${originPlace.lng}->${destPlace.lat},${destPlace.lng}`;
+        if (savedVehicleRef.current !== routeKey) {
+          savedVehicleRef.current = routeKey;
+          try {
+            await saveTrip({
+              vehicle_id: v.id,
+              origin_name: originPlace.name,
+              origin_lat: originPlace.lat,
+              origin_lng: originPlace.lng,
+              dest_name: destPlace.name,
+              dest_lat: destPlace.lat,
+              dest_lng: destPlace.lng,
+              assumed_avg_speed_kmph: 60,
+              starting_battery_pct: soc,
+              safety_buffer_pct: 18,
+              total_distance_km: result.total_distance_km,
+              total_estimated_duration_min: result.total_estimated_duration_min,
+            });
+          } catch (saveErr) {
+            console.warn('Failed to save trip to history', saveErr);
+          }
+        }
       } catch (e: unknown) {
-        const err = e as { response?: { data?: { detail?: string } }; message?: string };
-        console.warn('Trip planning fallback to mock route:', err.message);
-        // Keep smooth visual presentation even before backend finishes seeding
+        const err = e as {
+          response?: { data?: { detail?: string | Record<string, unknown> } };
+          message?: string;
+        };
+        const rawDetail = err.response?.data?.detail;
+        if (rawDetail && typeof rawDetail === 'object') {
+          const d = rawDetail as Record<string, unknown>;
+          setError({
+            message: typeof d.message === 'string' ? d.message : 'Could not plan this trip',
+            gap:
+              d.type === 'no_charger_gap' && typeof d.gap_start_km === 'number'
+                ? {
+                    gap_start_km: d.gap_start_km as number,
+                    gap_end_km: d.gap_end_km as number,
+                    remaining_range_km: d.remaining_range_km as number,
+                    current_battery_pct: d.current_battery_pct as number,
+                    current_km: d.current_km as number,
+                  }
+                : null,
+          });
+        } else {
+          const detail =
+            (typeof rawDetail === 'string' ? rawDetail : undefined) ||
+            err.message ||
+            'Could not plan this trip';
+          setError({ message: detail, gap: null });
+        }
+        console.warn('Trip planning failed:', err);
       } finally {
         setPlanning(false);
       }
     },
-    [origin.lat, origin.lng]
+    []
   );
 
-  // Recalculate trip when vehicle or destination changes
+  // Recalculate trip when vehicle, battery, origin, or destination changes
   useEffect(() => {
     if (selectedVehicle) {
-      handleCalculateRoute(selectedVehicle, batteryPct, { lat: dest.lat, lng: dest.lng });
+      handleCalculateRoute(selectedVehicle, batteryPct, origin, dest);
     }
-  }, [selectedVehicle, batteryPct, dest, handleCalculateRoute]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedVehicle, batteryPct, origin, dest]);
 
-  const handleSelectDestination = (destName: string, coords: { lat: number; lng: number }) => {
-    setDest({ name: destName, lat: coords.lat, lng: coords.lng });
+  // First-run onboarding (skippable, localStorage-backed)
+  useEffect(() => {
+    try {
+      if (!localStorage.getItem(ONBOARDING_SEEN_KEY)) {
+        const t = setTimeout(() => setShowOnboarding(true), 600);
+        return () => clearTimeout(t);
+      }
+    } catch {
+      // localStorage unavailable — skip onboarding
+    }
+  }, []);
+
+  const openHistory = async () => {
+    setIsHistoryOpen(true);
+    setHistoryLoading(true);
+    try {
+      const data = await listTrips({ page: 1, page_size: 30 });
+      setHistory(data.trips);
+    } catch (e) {
+      console.warn('Failed to load history', e);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const handlePlanAgain = (trip: SavedTrip) => {
+    setIsHistoryOpen(false);
+    setOrigin({ name: trip.origin_name, lat: trip.origin_lat, lng: trip.origin_lng });
+    setDest({ name: trip.dest_name, lat: trip.dest_lat, lng: trip.dest_lng });
+    setBatteryPct(Math.round(trip.starting_battery_pct));
+    setError(null);
+  };
+
+  const handleDeleteTrip = async (id: string) => {
+    try {
+      await deleteTrip(id);
+      setHistory((prev) => prev.filter((t) => t.id !== id));
+    } catch (e) {
+      console.warn('Failed to delete trip', e);
+    }
+  };
+
+  const handleSelectPlace = (
+    kind: 'origin' | 'dest',
+    place: { name: string; lat: number; lng: number }
+  ) => {
+    if (kind === 'origin') {
+      setOrigin({ name: place.name, lat: place.lat, lng: place.lng });
+    } else {
+      setDest({ name: place.name, lat: place.lat, lng: place.lng });
+    }
+    setError(null);
   };
 
   const handleStartJourney = () => {
@@ -128,11 +276,12 @@ export default function Home() {
 
         {/* Top Floating Search Chrome */}
         <SearchHeader
-          onSelectDestination={handleSelectDestination}
+          originName={origin.name}
+          destName={dest.name}
+          onSelectPlace={handleSelectPlace}
           onOpenVehicleSelect={() => setIsVehicleModalOpen(true)}
           activeFilter={activeFilter}
           onFilterChange={setActiveFilter}
-          currentDestName={`${origin.name} → ${dest.name}`}
         />
 
         {/* Ambient Top-Left Vehicle Pill */}
@@ -142,12 +291,41 @@ export default function Home() {
           onClick={() => setIsVehicleModalOpen(true)}
         />
 
-        {/* Error notification banner if any */}
-        {error && (
-          <div className="absolute top-36 left-4 right-4 z-30 bg-red-100 border border-red-300 text-red-800 text-xs px-3 py-2 rounded-xl shadow-md flex justify-between items-center">
-            <span>{error}</span>
-            <button onClick={() => setError(null)} className="font-bold ml-2">✕</button>
-          </div>
+        {/* History button (below search header, right side) */}
+        <button
+          onClick={openHistory}
+          title="Trip history"
+          className="absolute top-[136px] right-3 z-40 w-9 h-9 rounded-full bg-white shadow-md border border-gray-100 flex items-center justify-center text-base hover:bg-gray-50 active:scale-95 transition-all"
+        >
+          🕘
+        </button>
+
+        {/* Error state */}
+        {error && !planning && (
+          <TripErrorState
+            message={error.message}
+            gap={error.gap}
+            onRetry={() =>
+              selectedVehicle &&
+              handleCalculateRoute(selectedVehicle, batteryPct, origin, dest)
+            }
+            onSwitchVehicle={() => {
+              setError(null);
+              setIsVehicleModalOpen(true);
+            }}
+          />
+        )}
+
+        {/* Route-calculating loading overlay */}
+        {planning && (
+          <TripLoadingState
+            vehicleName={
+              selectedVehicle
+                ? `${selectedVehicle.make} ${selectedVehicle.model}`
+                : 'your EV'
+            }
+            routeName={`${origin.name} → ${dest.name}`}
+          />
         )}
 
         {/* Bottom Itinerary Sheet */}
@@ -178,6 +356,40 @@ export default function Home() {
           selectedVehicle={selectedVehicle}
           batteryPct={batteryPct}
           onBatteryChange={(pct) => setBatteryPct(pct)}
+        />
+
+        {/* Trip History */}
+        <TripHistorySheet
+          isOpen={isHistoryOpen}
+          onClose={() => setIsHistoryOpen(false)}
+          trips={history}
+          loading={historyLoading}
+          onPlanAgain={handlePlanAgain}
+          onDelete={handleDeleteTrip}
+        />
+
+        {/* First-run Onboarding */}
+        <OnboardingModal
+          isOpen={showOnboarding}
+          onClose={() => {
+            setShowOnboarding(false);
+            try {
+              localStorage.setItem(ONBOARDING_SEEN_KEY, '1');
+            } catch {
+              /* ignore */
+            }
+          }}
+          onPickVehicle={() => {
+            setShowOnboarding(false);
+            try {
+              localStorage.setItem(ONBOARDING_SEEN_KEY, '1');
+            } catch {
+              /* ignore */
+            }
+            setIsVehicleModalOpen(true);
+          }}
+          hasVehicle={selectedVehicle !== null}
+          vehicleName={vehicleDisplayName}
         />
       </div>
     </main>

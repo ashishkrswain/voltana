@@ -20,7 +20,7 @@ export function VehiclePill({
   return (
     <div
       onClick={onClick}
-      className="absolute top-24 left-3 z-20 bg-[#16221D] text-white rounded-full py-1.5 px-3 pl-2.5 flex items-center gap-2 shadow-lg hover:bg-black/90 active:scale-95 transition-all cursor-pointer border border-white/10"
+      className="absolute top-[136px] left-3 z-20 bg-[#16221D] text-white rounded-full py-1.5 px-3 pl-2.5 flex items-center gap-2 shadow-lg hover:bg-black/90 active:scale-95 transition-all cursor-pointer border border-white/10"
       title="Click to change vehicle or battery SoC"
     >
       <span className="text-xs">🔋</span>

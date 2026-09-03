@@ -71,6 +71,32 @@ def haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
+class NoChargerGapError(ValueError):
+    """Raised when no compatible charger exists within a reachable stretch.
+
+    Carries enough detail for the UI to show the exact dead gap (per the
+    no-charger-found error state in the design mockups).
+    """
+
+    def __init__(
+        self,
+        gap_start_km: float,
+        gap_end_km: float,
+        remaining_range_km: float,
+        current_battery_pct: float,
+        current_km: float,
+    ):
+        self.gap_start_km = gap_start_km
+        self.gap_end_km = gap_end_km
+        self.remaining_range_km = remaining_range_km
+        self.current_battery_pct = current_battery_pct
+        self.current_km = current_km
+        super().__init__(
+            f"No compatible charger between km {gap_start_km:.0f} and "
+            f"{gap_end_km:.0f}"
+        )
+
+
 def project_point_to_polyline(
     point_lat: float, point_lng: float, polyline_coords: List[Tuple[float, float]]
 ) -> Tuple[float, int]:
@@ -311,7 +337,24 @@ class TripPlanner:
                         next_stop = candidate
 
             if not next_stop:
-                raise ValueError(f"No compatible charger reachable from km {current_km:.1f} with {current_battery_pct:.1f}% battery")
+                # Find the nearest compatible charger ahead, to describe the gap.
+                next_candidate = next(
+                    (c for c in candidates if c.km_from_origin > current_km),
+                    None,
+                )
+                gap_end_km = (
+                    next_candidate.km_from_origin
+                    if next_candidate
+                    else min(total_distance_km, current_km + safe_range_km)
+                )
+                remaining_range_km = current_km + safe_range_km
+                raise NoChargerGapError(
+                    gap_start_km=current_km,
+                    gap_end_km=gap_end_km,
+                    remaining_range_km=remaining_range_km,
+                    current_battery_pct=current_battery_pct,
+                    current_km=current_km,
+                )
 
             # Calculate charge needed to reach next stop or destination
             distance_to_next = next_stop.km_from_origin - current_km
