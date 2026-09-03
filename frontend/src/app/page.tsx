@@ -403,7 +403,7 @@ export default function Home() {
 
         {/* AC options notice (shown after "Show AC charging options") */}
         {acChargers && !error && !planning && (
-          <div className="absolute top-[120px] left-3 z-40 bg-[#16221D] text-white rounded-2xl px-3.5 py-2.5 shadow-lg border border-white/10 text-xs flex items-center gap-2.5 max-w-[280px]">
+          <div className="absolute bottom-[118px] left-3 right-3 z-40 bg-[#16221D] text-white rounded-2xl px-3.5 py-2.5 shadow-lg border border-white/10 text-xs flex items-center gap-2.5">
             <span className="flex-shrink-0">⚡</span>
             <div className="min-w-0">
               <div className="font-semibold truncate">
