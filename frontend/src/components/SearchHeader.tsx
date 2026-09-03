@@ -16,6 +16,7 @@ interface SearchHeaderProps {
   onFilterChange?: (filter: string) => void;
   onSelectPlace: (kind: 'origin' | 'dest', place: Place) => void;
   currentDestName?: string;
+  onSwap?: () => void;
 }
 
 interface GeocodeResult {
@@ -50,6 +51,7 @@ export function SearchHeader({
   activeFilter = 'route',
   onFilterChange,
   onSelectPlace,
+  onSwap,
 }: SearchHeaderProps) {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [activeField, setActiveField] = useState<'origin' | 'dest'>('dest');
@@ -135,6 +137,18 @@ export function SearchHeader({
             {destName}
           </div>
         </div>
+        {onSwap && (
+          <div
+            onClick={(e) => {
+              e.stopPropagation();
+              onSwap();
+            }}
+            title="Swap origin and destination"
+            className="w-7 h-7 rounded-full bg-[#F0EEE7] text-[#3E4A44] flex items-center justify-center text-sm font-bold shadow-sm hover:bg-gray-200 active:scale-95 transition-all"
+          >
+            ⇅
+          </div>
+        )}
         <div
           onClick={(e) => {
             e.stopPropagation();

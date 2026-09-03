@@ -354,6 +354,11 @@ export default function Home() {
           onOpenVehicleSelect={() => setIsVehicleModalOpen(true)}
           activeFilter={activeFilter}
           onFilterChange={setActiveFilter}
+          onSwap={() => {
+            setOrigin(dest);
+            setDest(origin);
+            setError(null);
+          }}
         />
 
         {/* Ambient Top-Left Vehicle Pill */}
