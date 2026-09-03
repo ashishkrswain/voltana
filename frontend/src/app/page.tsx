@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Vehicle,
   Charger,
@@ -330,6 +330,21 @@ export default function Home() {
     ? `${selectedVehicle.make} ${selectedVehicle.model} ${selectedVehicle.variant || ''}`.trim()
     : 'Nexon EV Long Range';
 
+  // Only show chargers the selected vehicle can actually use.
+  const compatibleChargers = useMemo(() => {
+    if (acChargers) return acChargers;
+    if (!selectedVehicle) return allChargers;
+    const dcPort = selectedVehicle.dc_charge_port_type;
+    const acPort = selectedVehicle.ac_charge_port_type;
+    return allChargers.filter((c) => {
+      const conns = (c.connector_types || '').split(',').map((s) => s.trim());
+      const isDcStation = c.power_kw >= 20;
+      if (dcPort && isDcStation && conns.includes(dcPort)) return true;
+      if (!dcPort && acPort && !isDcStation && conns.includes(acPort)) return true;
+      return false;
+    });
+  }, [acChargers, selectedVehicle, allChargers]);
+
   return (
     <main className="w-screen h-screen overflow-hidden bg-[#16221D] flex items-center justify-center relative">
       {/* Phone App Container / Responsive Viewport */}
@@ -341,7 +356,7 @@ export default function Home() {
           destCoords={{ lat: dest.lat, lng: dest.lng }}
           originName={origin.name}
           destName={dest.name}
-          allChargers={acChargers ?? allChargers}
+          allChargers={compatibleChargers}
           activeFilter={activeFilter}
           onSelectCharger={(stop) => setSelectedCharger(stop)}
         />
