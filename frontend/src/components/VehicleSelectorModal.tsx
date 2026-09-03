@@ -131,6 +131,16 @@ export function VehicleSelectorModal({
           >
             🛵 2W Scooters
           </button>
+          <button
+            onClick={() => setCategory('three_wheeler')}
+            className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-all ${
+              category === 'three_wheeler'
+                ? 'bg-[#2F5C50] text-white shadow-xs'
+                : 'bg-white border border-[#E2DED3] text-[#16221D]'
+            }`}
+          >
+            🛺 3W Autos
+          </button>
         </div>
 
         {/* Search */}
