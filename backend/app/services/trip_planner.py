@@ -264,19 +264,23 @@ class TripPlanner:
 
         candidates = []
         for charger in all_chargers:
-            # Check connector compatibility
+            # Connector compatibility, separated by charging mode so a 2W/AC-only
+            # vehicle never gets matched to a DC fast bay (which may list a
+            # Type 2 socket it can't realistically use).
             charger_connectors = [c.strip() for c in charger.connector_types.split(",")]
             vehicle_dc = vehicle.dc_charge_port_type
             vehicle_ac = vehicle.ac_charge_port_type
+            is_dc_station = charger.power_kw >= 20  # real DC fast bay
 
             compatible = False
-            for conn in charger_connectors:
-                if vehicle_dc and conn == vehicle_dc:
-                    compatible = True
-                    break
-                if vehicle_ac and conn == vehicle_ac:
-                    compatible = True
-                    break
+            # DC fast: requires the vehicle to have a DC port AND the station to
+            # actually be a DC bay with the matching connector.
+            if vehicle_dc and is_dc_station and vehicle_dc in charger_connectors:
+                compatible = True
+            # AC / low-power: vehicle AC port matches, and the station is a
+            # genuine AC point (or Ather-style 7.2kW grid point), not a DC bay.
+            if not compatible and vehicle_ac and not is_dc_station and vehicle_ac in charger_connectors:
+                compatible = True
 
             if not compatible:
                 continue
