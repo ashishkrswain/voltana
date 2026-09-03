@@ -30,8 +30,99 @@ from app.models import (
 
 
 def seed_vehicles(db: Session):
-    """Seed the vehicle database with top Indian EV models."""
+    """Seed (or refresh) the vehicle database from the India EV catalog.
 
+    The catalog (data/india_ev_catalog.py) is the single source of truth for
+    vehicles. This upserts by (make, model, variant, model_year): rows that
+    already exist are overwritten with the catalog's current specs so
+    corrected connector/range data lands on re-seed.
+    """
+    import importlib.util
+
+    catalog_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "india_ev_catalog.py")
+    spec = importlib.util.spec_from_file_location("india_ev_catalog", catalog_path)
+    catalog = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(catalog)
+
+    vehicles_data = catalog.VEHICLES
+    CATEGORY_MAP = {
+        "four_wheeler": VehicleCategory.FOUR_WHEELER,
+        "two_wheeler": VehicleCategory.TWO_WHEELER,
+        "three_wheeler": VehicleCategory.THREE_WHEELER,
+    }
+
+    for v_data in vehicles_data:
+        v_data = dict(v_data)  # don't mutate the catalog module
+        v_data["category"] = CATEGORY_MAP[v_data["category"]]
+        efficiency_curve = v_data.pop("efficiency_curve", [])
+        confidence = v_data.pop("confidence", RangeConfidenceLevel.MEDIUM)
+
+        # Overwrite any existing row with the same identity.
+        existing = db.query(Vehicle).filter(
+            Vehicle.make == v_data["make"],
+            Vehicle.model == v_data["model"],
+            Vehicle.variant == v_data["variant"],
+            Vehicle.model_year == v_data["model_year"]
+        ).first()
+
+        if existing:
+            for field, value in v_data.items():
+                setattr(existing, field, value)
+            vehicle = existing
+            db.flush()
+            db.query(EfficiencyCurve).filter(EfficiencyCurve.vehicle_id == vehicle.id).delete()
+            db.query(RangeConfidence).filter(RangeConfidence.vehicle_id == vehicle.id).delete()
+            db.flush()
+            action = "Updated"
+        else:
+            vehicle = Vehicle(**v_data)
+            db.add(vehicle)
+            db.flush()  # Get the ID
+            action = "Added"
+
+        # Re-add efficiency curve. Catalog rows don't ship curves, so synthesize
+        # a simple speed-based curve from the single efficiency number:
+        #   band @40kph -> base * 0.85, @60kph -> base, @80kph -> base * 1.25.
+        if not efficiency_curve:
+            base = v_data.get("efficiency_wh_per_km") or 0
+            if base:
+                efficiency_curve = [
+                    (40, round(base * 0.85, 1), EfficiencySource.MANUFACTURER),
+                    (60, round(base, 1), EfficiencySource.MANUFACTURER),
+                    (80, round(base * 1.25, 1), EfficiencySource.ESTIMATED),
+                ]
+        for speed, wh_per_km, source in efficiency_curve:
+            curve = EfficiencyCurve(
+                vehicle_id=vehicle.id,
+                speed_band_kmph=speed,
+                wh_per_km=wh_per_km,
+                source=source
+            )
+            db.add(curve)
+
+        # Re-add range confidence
+        rc = RangeConfidence(vehicle_id=vehicle.id, confidence=confidence)
+        db.add(rc)
+
+        print(f"{action}: {v_data['make']} {v_data['model']} {v_data['variant']}")
+
+    # Remove vehicles that are in the DB but no longer in the catalog.
+    catalog_keys = {(v["make"], v["model"], v["variant"], v["model_year"]) for v in vehicles_data}
+    all_vehicles = db.query(Vehicle).all()
+    removed = 0
+    for v in all_vehicles:
+        key = (v.make, v.model, v.variant, v.model_year)
+        if key not in catalog_keys:
+            db.delete(v)
+            removed += 1
+            print(f"Removed (not in catalog): {v.make} {v.model} {v.variant}")
+
+    db.commit()
+    print(f"Vehicles seeded: {len(vehicles_data)} (removed {removed} stale)")
+
+
+def _legacy_vehicle_list():
+    """Deprecated inline list kept only as a historical reference."""
     vehicles_data = [
         # Tata
         {
@@ -301,10 +392,10 @@ def seed_vehicles(db: Session):
             "top_speed_kmph": 120,
             "efficiency_wh_per_km": 28.5,
             "ac_charge_port_type": "Type 2",
-            "dc_charge_port_type": None,
+            "dc_charge_port_type": "Type 6",
             "max_ac_charge_kw": 7.4,
-            "max_dc_charge_kw": None,
-            "dc_10_80_time_minutes": None,
+            "max_dc_charge_kw": 12.0,
+            "dc_10_80_time_minutes": 130,
             "price_ex_showroom_inr": 147999,
             "status": VehicleStatus.ACTIVE,
             "source_last_verified": date(2024, 6, 1),
@@ -328,10 +419,10 @@ def seed_vehicles(db: Session):
             "top_speed_kmph": 90,
             "efficiency_wh_per_km": 27.0,
             "ac_charge_port_type": "Type 2",
-            "dc_charge_port_type": None,
+            "dc_charge_port_type": "Type 6",
             "max_ac_charge_kw": 7.4,
-            "max_dc_charge_kw": None,
-            "dc_10_80_time_minutes": None,
+            "max_dc_charge_kw": 12.0,
+            "dc_10_80_time_minutes": 100,
             "price_ex_showroom_inr": 119999,
             "status": VehicleStatus.ACTIVE,
             "source_last_verified": date(2024, 6, 1),
@@ -342,7 +433,8 @@ def seed_vehicles(db: Session):
             ],
             "confidence": RangeConfidenceLevel.MEDIUM,
         },
-        # Ather
+        # Ather (newer models charge DC on the IS 17017-2-7 "Type 7" port;
+        # the home/portable charger uses the Ather socket at 3.3 kW)
         {
             "category": VehicleCategory.TWO_WHEELER,
             "make": "Ather",
@@ -356,10 +448,10 @@ def seed_vehicles(db: Session):
             "top_speed_kmph": 90,
             "efficiency_wh_per_km": 35.0,
             "ac_charge_port_type": "Type 2",
-            "dc_charge_port_type": None,
+            "dc_charge_port_type": "Type 7",
             "max_ac_charge_kw": 3.3,
-            "max_dc_charge_kw": None,
-            "dc_10_80_time_minutes": None,
+            "max_dc_charge_kw": 6.0,
+            "dc_10_80_time_minutes": 100,
             "price_ex_showroom_inr": 139999,
             "status": VehicleStatus.ACTIVE,
             "source_last_verified": date(2024, 6, 1),
@@ -383,10 +475,10 @@ def seed_vehicles(db: Session):
             "top_speed_kmph": 90,
             "efficiency_wh_per_km": 37.5,
             "ac_charge_port_type": "Type 2",
-            "dc_charge_port_type": None,
+            "dc_charge_port_type": "Type 7",
             "max_ac_charge_kw": 3.3,
-            "max_dc_charge_kw": None,
-            "dc_10_80_time_minutes": None,
+            "max_dc_charge_kw": 6.0,
+            "dc_10_80_time_minutes": 90,
             "price_ex_showroom_inr": 129999,
             "status": VehicleStatus.ACTIVE,
             "source_last_verified": date(2024, 6, 1),
@@ -1157,6 +1249,180 @@ def seed_chargers(db: Session):
             "longitude": 74.2103,
             "connector_types": [ConnectorType.TYPE2, ConnectorType.BHARAT_AC_001],
             "power_kw": 3.3,
+        },
+        {
+            "network_slug": "bolt-earth",
+            "name": "Bolt.Earth Blaze - Khanapur DC",
+            "address": "Khanapur, near Anmod Rd",
+            "latitude": 15.6300,
+            "longitude": 74.5000,
+            "connector_types": [ConnectorType.TYPE6, ConnectorType.TYPE7],
+            "power_kw": 30.0,
+        },
+        {
+            "network_slug": "bolt-earth",
+            "name": "Bolt.Earth Blaze - Dharwad DC",
+            "address": "NH48, Dharwad",
+            "latitude": 15.4589,
+            "longitude": 75.0078,
+            "connector_types": [ConnectorType.TYPE6, ConnectorType.TYPE7],
+            "power_kw": 30.0,
+        },
+        {
+            "network_slug": "bolt-earth",
+            "name": "Bolt.Earth Blaze - Molem DC",
+            "address": "NH-748, Molem, Goa",
+            "latitude": 15.3397,
+            "longitude": 74.2103,
+            "connector_types": [ConnectorType.TYPE6, ConnectorType.TYPE7],
+            "power_kw": 30.0,
+        },
+        # --- Light-EV DC fast points (Type 6 / Type 7) ---
+        # Bolt.Earth Blaze (Type 7), Ola Hypercharger (Type 6), Ather Grid DC.
+        # These are the DC fast bays a modern 2W actually uses on a long run.
+        {
+            "network_slug": "bolt-earth",
+            "name": "Bolt.Earth Blaze - Nelamangala DC",
+            "address": "NH48, Nelamangala",
+            "latitude": 13.1004,
+            "longitude": 77.3934,
+            "connector_types": [ConnectorType.TYPE6, ConnectorType.TYPE7],
+            "power_kw": 30.0,
+        },
+        {
+            "network_slug": "bolt-earth",
+            "name": "Bolt.Earth Blaze - Tumakuru DC",
+            "address": "BH Road, Tumakuru",
+            "latitude": 13.3379,
+            "longitude": 77.1017,
+            "connector_types": [ConnectorType.TYPE6, ConnectorType.TYPE7],
+            "power_kw": 30.0,
+        },
+        {
+            "network_slug": "bolt-earth",
+            "name": "Bolt.Earth Blaze - Chitradurga DC",
+            "address": "NH48, Chitradurga",
+            "latitude": 14.2240,
+            "longitude": 76.3995,
+            "connector_types": [ConnectorType.TYPE6, ConnectorType.TYPE7],
+            "power_kw": 30.0,
+        },
+        {
+            "network_slug": "bolt-earth",
+            "name": "Bolt.Earth Blaze - Sira DC",
+            "address": "NH48, Sira",
+            "latitude": 13.7437,
+            "longitude": 76.9084,
+            "connector_types": [ConnectorType.TYPE6, ConnectorType.TYPE7],
+            "power_kw": 30.0,
+        },
+        {
+            "network_slug": "bolt-earth",
+            "name": "Bolt.Earth Blaze - Hiriyur DC",
+            "address": "NH48, Hiriyur",
+            "latitude": 13.9455,
+            "longitude": 76.6094,
+            "connector_types": [ConnectorType.TYPE6, ConnectorType.TYPE7],
+            "power_kw": 30.0,
+        },
+        {
+            "network_slug": "ather-grid",
+            "name": "Ather Grid DC - Sira",
+            "address": "NH48, Sira",
+            "latitude": 13.7437,
+            "longitude": 76.9084,
+            "connector_types": [ConnectorType.TYPE7],
+            "power_kw": 30.0,
+        },
+        {
+            "network_slug": "bolt-earth",
+            "name": "Bolt.Earth Blaze - Ranebennur DC",
+            "address": "NH48, Ranebennur",
+            "latitude": 14.6152,
+            "longitude": 75.6106,
+            "connector_types": [ConnectorType.TYPE6, ConnectorType.TYPE7],
+            "power_kw": 30.0,
+        },
+        {
+            "network_slug": "bolt-earth",
+            "name": "Bolt.Earth Blaze - Haveri DC",
+            "address": "NH48, Haveri",
+            "latitude": 14.7935,
+            "longitude": 75.4043,
+            "connector_types": [ConnectorType.TYPE6, ConnectorType.TYPE7],
+            "power_kw": 30.0,
+        },
+        {
+            "network_slug": "ather-grid",
+            "name": "Ather Grid DC - Ranebennur",
+            "address": "NH48, Ranebennur",
+            "latitude": 14.6152,
+            "longitude": 75.6106,
+            "connector_types": [ConnectorType.TYPE7],
+            "power_kw": 30.0,
+        },
+        {
+            "network_slug": "bolt-earth",
+            "name": "Bolt.Earth Blaze - Davanagere DC",
+            "address": "NH48, Davanagere",
+            "latitude": 14.4644,
+            "longitude": 75.9218,
+            "connector_types": [ConnectorType.TYPE6, ConnectorType.TYPE7],
+            "power_kw": 30.0,
+        },
+        {
+            "network_slug": "bolt-earth",
+            "name": "Bolt.Earth Blaze - Hubballi DC",
+            "address": "NH48, Hubballi",
+            "latitude": 15.3647,
+            "longitude": 75.1240,
+            "connector_types": [ConnectorType.TYPE6, ConnectorType.TYPE7],
+            "power_kw": 30.0,
+        },
+        {
+            "network_slug": "ather-grid",
+            "name": "Ather Grid DC - Tumakuru",
+            "address": "BH Road, Tumakuru",
+            "latitude": 13.3379,
+            "longitude": 77.1017,
+            "connector_types": [ConnectorType.TYPE7],
+            "power_kw": 30.0,
+        },
+        {
+            "network_slug": "ather-grid",
+            "name": "Ather Grid DC - Chitradurga",
+            "address": "NH48, Chitradurga",
+            "latitude": 14.2240,
+            "longitude": 76.3995,
+            "connector_types": [ConnectorType.TYPE7],
+            "power_kw": 30.0,
+        },
+        {
+            "network_slug": "ather-grid",
+            "name": "Ather Grid DC - Hubballi",
+            "address": "NH48, Hubballi",
+            "latitude": 15.3647,
+            "longitude": 75.1240,
+            "connector_types": [ConnectorType.TYPE7],
+            "power_kw": 30.0,
+        },
+        {
+            "network_slug": "ather-grid",
+            "name": "Ather Grid DC - Panjim",
+            "address": "Panjim, Goa",
+            "latitude": 15.4909,
+            "longitude": 73.8278,
+            "connector_types": [ConnectorType.TYPE7],
+            "power_kw": 30.0,
+        },
+        {
+            "network_slug": "tata-power-ez",
+            "name": "Tata Power EZ - Tumakuru LEV DC",
+            "address": "BH Road, Tumakuru",
+            "latitude": 13.3379,
+            "longitude": 77.1017,
+            "connector_types": [ConnectorType.TYPE6, ConnectorType.TYPE7],
+            "power_kw": 30.0,
         },
     ]
 

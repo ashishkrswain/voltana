@@ -140,12 +140,11 @@ export function VehicleSelector({ onSelect, selectedVehicle }: VehicleSelectorPr
                         <span>DC {vehicle.max_dc_charge_kw} kW</span>
                       </>
                     )}
-                    {vehicle.price_ex_showroom_inr && (
-                      <>
-                        <span>•</span>
-                        <span>₹{(vehicle.price_ex_showroom_inr / 1e5).toFixed(1)}L</span>
-                      </>
-                    )}
+                    <span>•</span>
+                    <span>
+                      {vehicle.ac_charge_port_type || 'AC'} /{' '}
+                      {vehicle.dc_charge_port_type || 'portable'}
+                    </span>
                   </div>
                 </div>
                 {selectedVehicle?.id === vehicle.id && (

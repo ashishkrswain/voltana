@@ -193,12 +193,11 @@ export function VehicleSelectorModal({
                             <span>{v.max_dc_charge_kw} kW DC</span>
                           </>
                         )}
-                        {v.price_ex_showroom_inr && (
-                          <>
-                            <span>•</span>
-                            <span>₹{(v.price_ex_showroom_inr / 1e5).toFixed(1)}L</span>
-                          </>
-                        )}
+                        <span>•</span>
+                        <span>
+                          {v.ac_charge_port_type || 'AC'} /{' '}
+                          {v.dc_charge_port_type || 'portable'}
+                        </span>
                       </div>
                     </div>
                     {isSelected && (

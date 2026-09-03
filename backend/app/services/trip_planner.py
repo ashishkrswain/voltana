@@ -320,6 +320,12 @@ class TripPlanner:
         current_km = 0.0
         current_battery_pct = starting_battery_pct
 
+        # Small-battery 2W/3W vehicles can (and do) charge higher than 80% at a
+        # stop because their packs are tiny; capping them at 80% plus a 20%
+        # safety buffer leaves <60% usable range and makes long hops impossible.
+        # Use a 90% charge cap for batteries under ~8 kWh.
+        max_charge_pct = 90.0 if vehicle.battery_capacity_kwh < 8 else 80.0
+
         # Sort candidates by km_from_origin
         candidates = sorted(candidates, key=lambda c: c.km_from_origin)
 
@@ -368,7 +374,7 @@ class TripPlanner:
             wh_needed = range_needed * efficiency
             pct_needed = (wh_needed / (vehicle.battery_capacity_kwh * 1000)) * 100
             arrival_battery_pct = current_battery_pct - (distance_to_next * efficiency / (vehicle.battery_capacity_kwh * 1000) * 100)
-            charge_to_pct = min(80.0, max(arrival_battery_pct + pct_needed, 80.0))
+            charge_to_pct = min(max_charge_pct, max(arrival_battery_pct + pct_needed, max_charge_pct))
 
             # Estimate charge time
             charge_time_min = self.estimate_charge_time(
