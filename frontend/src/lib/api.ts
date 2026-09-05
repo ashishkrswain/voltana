@@ -1,6 +1,13 @@
 import axios from 'axios';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000';
+// In dev the backend runs on the same machine as the frontend. When the app is
+// opened from another device on the LAN (e.g. a phone), "localhost" would point
+// at the phone itself, so fall back to the host the page was loaded from.
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE ||
+  (typeof window !== 'undefined' && window.location.hostname
+    ? `${window.location.protocol}//${window.location.hostname}:8000`
+    : 'http://localhost:8000');
 
 export const api = axios.create({
   baseURL: API_BASE,
