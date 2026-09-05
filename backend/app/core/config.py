@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/voltana"
     GOOGLE_MAPS_API_KEY: Optional[str] = None
     ORS_API_KEY: Optional[str] = None
+    JINA_API_KEY: Optional[str] = None
     APP_ENV: str = "development"
     DEBUG: bool = True
 

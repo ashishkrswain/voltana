@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.database import Base, engine
-from app.routers import vehicles, chargers, trip, trips
+from app.routers import vehicles, chargers, trip, trips, tools
 from app.models import Vehicle, Charger, ChargerNetwork, SavedTrip
 
 
@@ -33,6 +33,7 @@ app.include_router(vehicles.router)
 app.include_router(chargers.router)
 app.include_router(trip.router)
 app.include_router(trips.router)
+app.include_router(tools.router)
 
 
 @app.get("/health")
